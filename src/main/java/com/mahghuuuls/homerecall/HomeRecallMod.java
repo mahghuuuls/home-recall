@@ -1,6 +1,11 @@
 package com.mahghuuuls.homerecall;
 
+import com.mahghuuuls.homerecall.config.ConfigReloadHandler;
+import com.mahghuuuls.homerecall.config.ConfigSnapshot;
+import com.mahghuuuls.homerecall.net.HomeRecallNetwork;
+import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.common.SidedProxy;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -10,8 +15,8 @@ import org.apache.logging.log4j.Logger;
  *
  * <p>Loads on both sides. The server decides whether a recall may begin, how long it runs, whether
  * it is cancelled, where it ends, and when the player is moved; the client only sends a request and
- * draws what it is told. Nothing here may name a type from the {@code client} package, because this
- * class is constructed on a dedicated server and anything it mentions is loaded there too.
+ * draws what it is told. Names no type from the {@code client} package, because this class is
+ * constructed on a dedicated server and anything it mentions is loaded there too.
  *
  * <p>The dependency is an inclusive minimum with no upper bound. {@code 1.0.0} is not a convenience
  * floor: it is the first Inventory Button Bar release that builds a container on a dedicated
@@ -25,9 +30,24 @@ public class HomeRecallMod {
 
     public static final Logger LOGGER = LogManager.getLogger(Tags.MOD_NAME);
 
+    @SidedProxy(
+            clientSide = "com.mahghuuuls.homerecall.client.ClientProxy",
+            serverSide = "com.mahghuuuls.homerecall.CommonProxy")
+    public static CommonProxy proxy;
+
     @Mod.EventHandler
     public void preInit(FMLPreInitializationEvent event) {
-        LOGGER.info("{} {} loading", Tags.MOD_NAME, Tags.VERSION);
-    }
+        // Forge reads the configuration during mod construction, so this is the first point the
+        // annotated fields hold what the player wrote rather than the declared defaults. It is
+        // therefore also the only correct moment to pin the two options that are consumed once,
+        // before anything registers an item or loads a recipe.
+        ConfigSnapshot.initialize();
+        for (String correction : ConfigSnapshot.current().corrections()) {
+            LOGGER.warn(correction);
+        }
+        MinecraftForge.EVENT_BUS.register(ConfigReloadHandler.class);
 
+        HomeRecallNetwork.register();
+        proxy.preInit(event);
+    }
 }
