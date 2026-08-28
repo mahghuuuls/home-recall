@@ -3,10 +3,12 @@ package com.mahghuuuls.homerecall;
 import com.mahghuuuls.homerecall.config.ConfigReloadHandler;
 import com.mahghuuuls.homerecall.config.ConfigSnapshot;
 import com.mahghuuuls.homerecall.net.HomeRecallNetwork;
+import com.mahghuuuls.homerecall.recall.RecallService;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.SidedProxy;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
+import net.minecraftforge.fml.common.event.FMLServerStoppingEvent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -47,7 +49,19 @@ public class HomeRecallMod {
         }
         MinecraftForge.EVENT_BUS.register(ConfigReloadHandler.class);
 
+        MinecraftForge.EVENT_BUS.register(RecallService.class);
         HomeRecallNetwork.register();
         proxy.preInit(event);
+    }
+
+    /**
+     * Discards recall state when the server stops.
+     *
+     * <p>Single player stops its integrated server without ending the game, so state that outlives
+     * a server would be waiting for the next world.
+     */
+    @Mod.EventHandler
+    public void serverStopping(FMLServerStoppingEvent event) {
+        RecallService.onServerStopping();
     }
 }

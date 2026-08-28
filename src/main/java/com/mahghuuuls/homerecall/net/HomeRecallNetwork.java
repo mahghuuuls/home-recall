@@ -3,18 +3,17 @@ package com.mahghuuuls.homerecall.net;
 import com.mahghuuuls.homerecall.Tags;
 import net.minecraftforge.fml.common.network.NetworkRegistry;
 import net.minecraftforge.fml.common.network.simpleimpl.SimpleNetworkWrapper;
+import net.minecraftforge.fml.relauncher.Side;
 
 /**
  * The mod's one network channel, and the single place message ids are assigned.
  *
- * <p>No message is registered yet. The channel exists so later work has one place to add to rather
- * than each feature creating its own.
- *
- * <p>When messages arrive, give each one a named constant for its id rather than a running
- * counter. The id is part of the wire format: reordering registration calls would silently change
- * what an older client's packet means.
+ * <p>Ids are named constants rather than a running counter. The id is part of the wire format:
+ * reordering the registration calls would silently change what an older client's packet means.
  */
 public final class HomeRecallNetwork {
+
+    private static final int ID_RECALL_REQUEST = 0;
 
     private static SimpleNetworkWrapper channel;
 
@@ -30,10 +29,16 @@ public final class HomeRecallNetwork {
      */
     public static void register() {
         channel = NetworkRegistry.INSTANCE.newSimpleChannel(Tags.MOD_ID);
+        channel.registerMessage(RecallRequestMessage.Handler.class, RecallRequestMessage.class,
+                ID_RECALL_REQUEST, Side.SERVER);
     }
 
-    /** The channel. Null before {@link #register()}, which is a programming error rather than a state to handle. */
-    static SimpleNetworkWrapper channel() {
+    /** Asks the server to start a recall. Client side; the server decides whether it may. */
+    public static void sendRecallRequest() {
+        channel().sendToServer(new RecallRequestMessage());
+    }
+
+    private static SimpleNetworkWrapper channel() {
         if (channel == null) {
             throw new IllegalStateException(
                     "Home Recall network channel was used before register() ran.");
