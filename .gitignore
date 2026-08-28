@@ -1,0 +1,41 @@
+# eclipse
+bin
+*.launch
+.settings
+.metadata
+.classpath
+.project
+
+# idea
+out
+*.ipr
+*.iws
+*.iml
+.idea
+
+# gradle
+build
+.gradle
+
+# kate
+*.kate-swp
+
+# other
+eclipse
+run
+
+# Local development test tooling. Not a project dependency and never shipped.
+# Anchored, so it cannot silently ignore an unrelated libs directory deeper in the tree.
+/libs/*
+
+# ...except the Inventory Button Bar API, which is a real compile dependency rather than local
+# tooling. Committed because the build resolves it as a file: without it in the repository a clean
+# clone cannot compile, and the failure would read as a missing symbol rather than a missing jar.
+# The deobfuscated build deliberately; the published one is reobfuscated and would bind this mod to
+# names the development environment does not use.
+!/libs/inventorybuttonbar-*-dev.jar
+
+# Log4j output from anything that runs Minecraft classes with the repository root as its working
+# directory, which is what a unit test run is. Distinct from run/logs, which belongs to the
+# development game instance. Anchored for the same reason as libs.
+/logs/
