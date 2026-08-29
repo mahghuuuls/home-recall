@@ -58,10 +58,20 @@ public final class HomeRecallConfig {
         @Config.Name("castTimeSeconds")
         @Config.Comment({
                 "Seconds a player must stand through before the recall completes.",
-                "They may move, fight, and act freely during it.",
+                "They can still walk, jump, look around, and open their inventory during it,",
+                "but they move slowly and cannot attack or use items.",
                 "Example: 8. Values outside 1 to 300 are corrected to the nearest bound."})
         @Config.RangeInt(min = ConfigSnapshot.MIN_CAST_SECONDS, max = ConfigSnapshot.MAX_CAST_SECONDS)
         public int castTimeSeconds = 8;
+
+        @Config.Name("castMovementSpeed")
+        @Config.Comment({
+                "How fast a player moves while recalling, as a fraction of their normal speed.",
+                "Example: 0.2 is a fifth of normal. 1.0 turns the slow off and leaves them at",
+                "full speed. 0.0 stops them completely.",
+                "Values outside 0.0 to 1.0 are corrected to the nearest bound."})
+        @Config.RangeDouble(min = ConfigSnapshot.MIN_CAST_SPEED, max = ConfigSnapshot.MAX_CAST_SPEED)
+        public double castMovementSpeed = 0.2D;
 
         @Config.Name("allowCrossDimension")
         @Config.Comment({

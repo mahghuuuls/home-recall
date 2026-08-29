@@ -15,7 +15,7 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
  * {@link ConfigManager#sync(String, Config.Type)} here, the file on disk and the values the mod
  * acts on drift apart silently: the user sees their edit saved and sees nothing change.
  *
- * <p>Eleven of the thirteen options are documented as taking effect without a restart, which is
+ * <p>Twelve of the fourteen options are documented as taking effect without a restart, which is
  * only true because of this class. The other two are pinned by {@link ConfigSnapshot} and stay at
  * their boot values however the file is edited.
  *

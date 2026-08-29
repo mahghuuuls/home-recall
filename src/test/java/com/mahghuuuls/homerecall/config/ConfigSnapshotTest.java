@@ -25,6 +25,7 @@ class ConfigSnapshotTest {
     private boolean originalRegisterRecipe;
     private boolean originalRequire;
     private int originalCast;
+    private double originalCastSpeed;
     private boolean originalCrossDimension;
     private boolean originalWorldSpawn;
     private boolean originalKeepOnDeath;
@@ -44,6 +45,7 @@ class ConfigSnapshotTest {
         originalRegisterRecipe = HomeRecallConfig.equipment.registerRecallStoneRecipe;
         originalRequire = HomeRecallConfig.general.requireRecallStone;
         originalCast = HomeRecallConfig.general.castTimeSeconds;
+        originalCastSpeed = HomeRecallConfig.general.castMovementSpeed;
         originalCrossDimension = HomeRecallConfig.general.allowCrossDimension;
         originalWorldSpawn = HomeRecallConfig.general.fallbackToWorldSpawn;
         originalKeepOnDeath = HomeRecallConfig.equipment.keepRecallStoneOnDeath;
@@ -62,6 +64,7 @@ class ConfigSnapshotTest {
         HomeRecallConfig.equipment.registerRecallStoneRecipe = originalRegisterRecipe;
         HomeRecallConfig.general.requireRecallStone = originalRequire;
         HomeRecallConfig.general.castTimeSeconds = originalCast;
+        HomeRecallConfig.general.castMovementSpeed = originalCastSpeed;
         HomeRecallConfig.general.allowCrossDimension = originalCrossDimension;
         HomeRecallConfig.general.fallbackToWorldSpawn = originalWorldSpawn;
         HomeRecallConfig.equipment.keepRecallStoneOnDeath = originalKeepOnDeath;
@@ -83,6 +86,7 @@ class ConfigSnapshotTest {
         assertTrue(snapshot.registerRecallStone());
         assertTrue(snapshot.requireRecallStone());
         assertEquals(8, snapshot.castTimeSeconds());
+        assertEquals(0.2D, snapshot.castMovementSpeed(), 0.0001D);
         assertTrue(snapshot.allowCrossDimension());
         assertTrue(snapshot.fallbackToWorldSpawn());
         assertTrue(snapshot.registerRecallStoneRecipe());
@@ -295,5 +299,72 @@ class ConfigSnapshotTest {
         } catch (UnsupportedOperationException expected) {
             // The snapshot is immutable, including its lists.
         }
+    }
+
+    @Test
+    @DisplayName("a cast speed below zero is corrected to a full stop")
+    void castSpeedBelowMinimumIsClamped() {
+        HomeRecallConfig.general.castMovementSpeed = -1.0D;
+        ConfigSnapshot.initialize();
+
+        ConfigSnapshot snapshot = ConfigSnapshot.current();
+        assertEquals(0.0D, snapshot.castMovementSpeed(), 0.0001D);
+        assertEquals(1, snapshot.corrections().size());
+        assertTrue(snapshot.corrections().get(0).contains("castMovementSpeed"),
+                "the correction must name the key the user has to fix");
+    }
+
+    @Test
+    @DisplayName("a cast speed above one is corrected to normal speed")
+    void castSpeedAboveMaximumIsClamped() {
+        HomeRecallConfig.general.castMovementSpeed = 5.0D;
+        ConfigSnapshot.initialize();
+
+        ConfigSnapshot snapshot = ConfigSnapshot.current();
+        assertEquals(1.0D, snapshot.castMovementSpeed(), 0.0001D);
+        assertEquals(1, snapshot.corrections().size());
+    }
+
+    @Test
+    @DisplayName("both bounds are usable values, not rejected ones")
+    void castSpeedBoundsAreAccepted() {
+        HomeRecallConfig.general.castMovementSpeed = 0.0D;
+        ConfigSnapshot.initialize();
+        assertEquals(0.0D, ConfigSnapshot.current().castMovementSpeed(), 0.0001D);
+        assertTrue(ConfigSnapshot.current().corrections().isEmpty(),
+                "a full stop is a harsh setting, not an invalid one");
+
+        ConfigSnapshot.resetForTest();
+        HomeRecallConfig.general.castMovementSpeed = 1.0D;
+        ConfigSnapshot.initialize();
+        assertEquals(1.0D, ConfigSnapshot.current().castMovementSpeed(), 0.0001D);
+        assertTrue(ConfigSnapshot.current().corrections().isEmpty(),
+                "turning the slow off is a supported choice, not a mistake");
+    }
+
+    @Test
+    @DisplayName("a cast speed that is not a number is corrected rather than passed through")
+    void castSpeedNaNIsCorrected() {
+        // The one value a plain two-sided range check lets through: every comparison against NaN
+        // is false, so `< min` and `> max` both miss it. It would then reach the movement-speed
+        // attribute, where it produces a player who cannot move and a log that says nothing.
+        HomeRecallConfig.general.castMovementSpeed = Double.NaN;
+        ConfigSnapshot.initialize();
+
+        ConfigSnapshot snapshot = ConfigSnapshot.current();
+        assertEquals(1.0D, snapshot.castMovementSpeed(), 0.0001D);
+        assertEquals(1, snapshot.corrections().size());
+        assertTrue(snapshot.corrections().get(0).contains("castMovementSpeed"));
+    }
+
+    @Test
+    @DisplayName("a valid cast speed is carried through untouched and reports nothing")
+    void castSpeedIsCarriedThrough() {
+        HomeRecallConfig.general.castMovementSpeed = 0.45D;
+        ConfigSnapshot.initialize();
+
+        ConfigSnapshot snapshot = ConfigSnapshot.current();
+        assertEquals(0.45D, snapshot.castMovementSpeed(), 0.0001D);
+        assertTrue(snapshot.corrections().isEmpty());
     }
 }

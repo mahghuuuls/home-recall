@@ -82,4 +82,52 @@ public final class Diagnostics {
             HomeRecallMod.LOGGER.info("{}: recall completed to {}", playerName, destination);
         }
     }
+
+    /**
+     * The movement slow at the start of a cast: whether one was applied, and how strong.
+     *
+     * @param applied false when the configured speed left the player at normal speed and no
+     *                modifier was created. Passed in rather than re-derived from the fraction,
+     *                because deciding what happened is not this class's job and a threshold
+     *                copied here could drift from the one that actually decided.
+     */
+    public static void slowdownApplied(String playerName, boolean applied, double speedFraction) {
+        if (enabled()) {
+            if (applied) {
+                HomeRecallMod.LOGGER.info("{}: cast slowdown applied at {} of normal speed",
+                        playerName, speedFraction);
+            } else {
+                HomeRecallMod.LOGGER.info(
+                        "{}: no cast slowdown applied, castMovementSpeed is {}",
+                        playerName, speedFraction);
+            }
+        }
+    }
+
+    /** The movement slow was removed, naming which end path did it. */
+    public static void slowdownRemoved(String playerName, String path) {
+        if (enabled()) {
+            HomeRecallMod.LOGGER.info("{}: cast slowdown removed ({})", playerName, path);
+        }
+    }
+
+    /**
+     * A leftover slow was found on a player as they joined, and removed.
+     *
+     * <p>This should be impossible: the modifier is unsaved and every path that ends a cast
+     * removes it. Seeing this line means one of those two facts stopped being true.
+     *
+     * <p>Behind the enabled check like every other record, despite naming a defect. Off means
+     * silent, with no exception for output this mod happens to think is important. Warning a
+     * player who never asked for diagnostics about the mod's own internals is not their problem
+     * to read.
+     */
+    public static void slowdownFoundAtLogin(String playerName) {
+        if (enabled()) {
+            HomeRecallMod.LOGGER.warn(
+                    "{} logged in carrying a Home Recall cast slowdown, which should not be "
+                            + "possible. It has been removed. Either a path that ends a cast is "
+                            + "not removing it, or the modifier is no longer unsaved.", playerName);
+        }
+    }
 }

@@ -1,6 +1,7 @@
 package com.mahghuuuls.homerecall.net;
 
 import com.mahghuuuls.homerecall.Tags;
+import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraftforge.fml.common.network.NetworkRegistry;
 import net.minecraftforge.fml.common.network.simpleimpl.SimpleNetworkWrapper;
 import net.minecraftforge.fml.relauncher.Side;
@@ -14,6 +15,7 @@ import net.minecraftforge.fml.relauncher.Side;
 public final class HomeRecallNetwork {
 
     private static final int ID_RECALL_REQUEST = 0;
+    private static final int ID_CAST_SYNC = 1;
 
     private static SimpleNetworkWrapper channel;
 
@@ -31,11 +33,23 @@ public final class HomeRecallNetwork {
         channel = NetworkRegistry.INSTANCE.newSimpleChannel(Tags.MOD_ID);
         channel.registerMessage(RecallRequestMessage.Handler.class, RecallRequestMessage.class,
                 ID_RECALL_REQUEST, Side.SERVER);
+        channel.registerMessage(CastSyncMessage.Handler.class, CastSyncMessage.class,
+                ID_CAST_SYNC, Side.CLIENT);
     }
 
     /** Asks the server to start a recall. Client side; the server decides whether it may. */
     public static void sendRecallRequest() {
         channel().sendToServer(new RecallRequestMessage());
+    }
+
+    /**
+     * Tells one player that their cast started or ended.
+     *
+     * <p>Sent to the caster alone. Nearby players are a later slice, and sending to more people
+     * than need it now would be a wire format to unpick later rather than extend.
+     */
+    public static void sendCastSync(EntityPlayerMP player, boolean casting, int durationTicks) {
+        channel().sendTo(new CastSyncMessage(casting, durationTicks), player);
     }
 
     private static SimpleNetworkWrapper channel() {

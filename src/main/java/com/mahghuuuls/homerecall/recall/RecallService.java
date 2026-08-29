@@ -3,6 +3,8 @@ package com.mahghuuuls.homerecall.recall;
 import com.mahghuuuls.homerecall.HomeRecallMod;
 import com.mahghuuuls.homerecall.config.ConfigSnapshot;
 import com.mahghuuuls.homerecall.diagnostics.Diagnostics;
+import com.mahghuuuls.homerecall.net.HomeRecallNetwork;
+import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.MathHelper;
@@ -11,6 +13,7 @@ import net.minecraft.world.WorldServer;
 import net.minecraft.server.MinecraftServer;
 import net.minecraftforge.fml.common.FMLCommonHandler;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
+import net.minecraftforge.fml.common.gameevent.PlayerEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 
 import java.util.HashMap;
@@ -82,11 +85,85 @@ public final class RecallService {
             return refuse(player, dimensionRefusal);
         }
 
+        beginCast(player, config);
+        return null;
+    }
+
+    /**
+     * Everything that becomes true when a cast starts, in one place.
+     *
+     * <p>Paired with {@link #endCast}. Keeping the two together is the point: the cast entry and
+     * the movement slow start and stop as one thing, so a later path that ends a cast cannot end
+     * half of it. Every caller uses the pair; none of them touches the map or the slow directly.
+     */
+    private static void beginCast(EntityPlayerMP player, ConfigSnapshot config) {
         CastState cast = new CastState(config.castTimeTicks());
         CASTS.put(player.getUniqueID(), cast);
         LAST_REFUSAL.remove(player.getUniqueID());
+
+        // Abandons an item use that was already running, without telling the item it finished. A
+        // player who was eating when they pressed the key stops eating; they do not swallow.
+        player.resetActiveHand();
+
+        // The configured speed is read once, here. A cast started before the option changed keeps
+        // the speed it began with.
+        boolean slowed = CastSlowdown.apply(player, config.castMovementSpeed());
+        Diagnostics.slowdownApplied(player.getName(), slowed, config.castMovementSpeed());
+
+        // Told last, once everything that makes the cast real has happened. The client uses this
+        // only to stop predicting actions the server is about to refuse; it decides nothing.
+        HomeRecallNetwork.sendCastSync(player, true, cast.durationTicks());
         Diagnostics.recallStarted(player.getName(), cast.durationTicks());
-        return null;
+    }
+
+    /**
+     * Everything that stops being true when a cast ends, in one place.
+     *
+     * <p>Safe to call for a player who is not casting, so every lifecycle path can call it without
+     * first working out whether it needs to.
+     *
+     * @param path what ended it, for the record
+     */
+    private static void endCast(EntityPlayer player, String path) {
+        CASTS.remove(player.getUniqueID());
+        endCastEffects(player, path);
+    }
+
+    /**
+     * Everything a cast leaves behind, undone: the slow comes off and the client is told the cast
+     * is over.
+     *
+     * <p>Separate from {@link #endCast} for one reason. The tick loop removes the cast entry
+     * through its iterator, because removing it from the map while iterating would fail, so it
+     * calls this for the rest. Both halves still have exactly one implementation between them.
+     */
+    private static void endCastEffects(EntityPlayer player, String path) {
+        if (CastSlowdown.remove(player)) {
+            Diagnostics.slowdownRemoved(player.getName(), path);
+        }
+        if (player instanceof EntityPlayerMP) {
+            // Unconditional, unlike the slow above. A player whose configured speed was 1.0 never
+            // had a modifier but was still casting, and still has a client that must be told to
+            // stop refusing their actions. Tying this to the slow's removal would leave exactly
+            // those players unable to act until something else happened to correct them.
+            HomeRecallNetwork.sendCastSync((EntityPlayerMP) player, false, 0);
+        }
+    }
+
+    /**
+     * Whether this player has a cast running right now.
+     *
+     * <p>A membership test on a hot path: it is asked once per attack, block break, and
+     * interaction, and the map is empty whenever nobody is recalling.
+     *
+     * <p>Answers false for a client-side player. Casts live only on the server, and on a physical
+     * client both logical sides share this class, so an unguarded caller would read server state
+     * from the client thread and get an answer that happens to be right in single player and is
+     * meaningless in multiplayer. Refusing here rather than trusting each caller to check is what
+     * makes this safe to hand to client code.
+     */
+    public static boolean isCasting(EntityPlayer player) {
+        return player != null && !player.world.isRemote && CASTS.containsKey(player.getUniqueID());
     }
 
     /**
@@ -137,9 +214,19 @@ public final class RecallService {
             Map.Entry<UUID, CastState> entry = casts.next();
             EntityPlayerMP player = playerFor(entry.getKey());
             if (player == null || !player.isEntityAlive()) {
-                // The player left or died between ticks. Cancellation has its own handling in a
-                // later slice; discarding the orphaned cast here keeps the map from growing.
+                // The player has gone, died, or been removed from the world under this cast. That
+                // last one is not obvious: leaving the End through the exit portal marks the old
+                // entity dead and builds a new one, so a player who is very much alive arrives
+                // here too. All three end the cast silently for now; giving each a stated cause
+                // and telling the player is a later slice.
                 casts.remove();
+                if (player != null) {
+                    // The entity is about to be replaced by one with a fresh attribute map, so
+                    // this changes nothing that would be observed. It is here because "every path
+                    // that ends a cast removes the slow" is only worth having as a rule if it has
+                    // no exceptions a later reader has to remember.
+                    endCastEffects(player, "cast discarded");
+                }
                 continue;
             }
             if (!entry.getValue().tick()) {
@@ -153,6 +240,14 @@ public final class RecallService {
                 // that have not been visited yet.
                 HomeRecallMod.LOGGER.error("Home Recall failed while completing a recall for {}",
                         player.getName(), failure);
+            } finally {
+                // In a finally block on purpose. A completion that throws must still give the
+                // player their speed back: the cast is already out of the map by this point, so
+                // nothing else would ever come along to remove it.
+                //
+                // Named for reaching the end rather than for teleporting, because completion can
+                // also end in a refusal. Which of the two happened is recorded by complete().
+                endCastEffects(player, "cast reached its end");
             }
         }
     }
@@ -163,10 +258,52 @@ public final class RecallService {
      * <p>Not optional bookkeeping. On a single-player world the server stops but the JVM does not,
      * so without this a cast started before quitting to the menu would still be in the map when the
      * next world loads, and would complete against a player who never asked for it.
+     *
+     * <p>No slow is removed here, and that is deliberate rather than an omission. The modifier is
+     * unsaved, so it is not written with the player and cannot come back; every player entity that
+     * carries one is about to be discarded. Walking the player list to strip a modifier from
+     * entities that will not exist a moment later would be code that looks like a safeguard while
+     * guarding nothing. {@link #onPlayerLoggedIn} is the real backstop.
      */
     public static void onServerStopping() {
         Diagnostics.castsDiscardedAtServerStop(CASTS.size());
         clear();
+    }
+
+    /**
+     * Strips a leftover slow from a player as they join.
+     *
+     * <p>This should never find anything. The modifier is unsaved, so it cannot survive a restart,
+     * and every path that ends a cast removes it. That is exactly why it is worth having: if it
+     * ever does find one, the record it writes is the only evidence that an end path was added
+     * without a matching removal, or that the modifier stopped being unsaved.
+     */
+    @SubscribeEvent
+    public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
+        if (CastSlowdown.remove(event.player)) {
+            Diagnostics.slowdownFoundAtLogin(event.player.getName());
+        }
+        if (event.player instanceof EntityPlayerMP) {
+            // The client belief is static and survives leaving a world, so a player who quit to
+            // the menu mid-cast can arrive here still believing they are casting, with no server
+            // anywhere that could tell them otherwise. The client clears that itself when it
+            // loses its world; this makes the correction arrive from the authority as well, on
+            // every join, so the belief cannot depend on that timing being right.
+            HomeRecallNetwork.sendCastSync((EntityPlayerMP) event.player, false, 0);
+        }
+    }
+
+    /**
+     * Ends a departing player's cast.
+     *
+     * <p>The tick loop would discard the entry on its next pass anyway, once the player can no
+     * longer be found. Ending it here as well is not redundant: it keeps the cast and the slow
+     * ending together, which is the invariant {@link #endCast} exists to hold. Announcing a cause
+     * to a player who has already left is a separate question and is not answered here.
+     */
+    @SubscribeEvent
+    public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
+        endCast(event.player, "player logged out");
     }
 
     /**
@@ -202,7 +339,7 @@ public final class RecallService {
         }
         if (player.isPlayerSleeping()) {
             // Not setting the spawn: this wakes the player, it does not make the bed theirs. That
-            // distinction is the whole of REQ-013.
+            // distinction matters: this mod never writes respawn data.
             player.wakeUpPlayer(true, false, false);
         }
 
