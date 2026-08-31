@@ -2,7 +2,6 @@ key.categories.homerecall=Home Recall
 key.homerecall.recall=Home Recall
 
 homerecall.refused.not_alive=You cannot recall right now.
-homerecall.refused.already_recalling=Already recalling.
 homerecall.refused.no_destination=You have no spawn to recall to.
 homerecall.refused.cross_dimension_disabled=Your spawn is in another dimension.
 homerecall.refused.cross_dimension_not_implemented=Recalling to another dimension is not available yet.

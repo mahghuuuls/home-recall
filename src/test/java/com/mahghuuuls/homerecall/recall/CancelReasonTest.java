@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.util.HashSet;
 import java.util.Set;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -33,6 +34,29 @@ class CancelReasonTest {
     }
 
     @Test
+    @DisplayName("every message key in the language file is owned by a living constant")
+    void noOrphanedKeysInTheLanguageFile() {
+        // The reverse of everyMessageKeyExists. A key nothing references any more survives every
+        // build silently and ships as dead translator work — exactly what Bundle 003's silencing
+        // could have left behind. Keybinding keys are the one family owned outside these enums.
+        Set<String> owned = new HashSet<String>();
+        for (RefusalReason refusal : RefusalReason.values()) {
+            owned.add(refusal.translationKey());
+        }
+        for (CancelReason reason : CancelReason.values()) {
+            if (reason.messageKey() != null) {
+                owned.add(reason.messageKey());
+            }
+        }
+        for (String key : LangKeys.read()) {
+            if (key.startsWith("homerecall.")) {
+                assertTrue(owned.contains(key),
+                        key + " is in en_us.lang but no constant claims it any more");
+            }
+        }
+    }
+
+    @Test
     @DisplayName("no cancellation key collides with a refusal key")
     void causesAndRefusalsDoNotShareKeys() {
         // They share one anti-spam window, which is keyed on the message. Two different causes
@@ -50,20 +74,43 @@ class CancelReasonTest {
     }
 
     @Test
-    @DisplayName("only the two causes nobody could read are silent")
-    void onlySilentWhereNobodyCouldRead() {
-        // Death and logout leave the player somewhere no action bar reaches: a death screen, or
-        // gone. Every other cause leaves them standing in the world.
-        //
-        // LEFT_THE_WORLD is the one to watch. An earlier version had it silent on the grounds that
-        // the End exit shows the credits. That is true only the first time: vanilla sends the
-        // credits while seenCredits is false, so every later End exit drops the player straight
-        // into the Overworld, where they can read perfectly well.
+    @DisplayName("the fade plays exactly when the player is present to see it")
+    void fadeMeansPresent() {
+        // Death and logout are the only places no bar is watched: a death screen, or gone.
+        assertFalse(CancelReason.DIED.fades());
+        assertFalse(CancelReason.LOGGED_OUT.fades());
+        assertTrue(CancelReason.CHANGED_DIMENSION.fades());
+        assertTrue(CancelReason.LEFT_THE_WORLD.fades());
+        assertTrue(CancelReason.MOVED.fades());
+        assertTrue(CancelReason.ACTED.fades());
+        assertTrue(CancelReason.DAMAGED.fades());
+        assertTrue(CancelReason.CANCELLED_BY_PLAYER.fades());
+    }
+
+    @Test
+    @DisplayName("messages accompany only causes that are not the player's own obvious doing")
+    void messagesOnlyWhereNotSelfEvident() {
+        // Stepping, swinging, being hit, and pressing the key again explain themselves; the fade
+        // is their whole feedback. A portal and the End exit are the two that earn a sentence.
+        assertNull(CancelReason.MOVED.messageKey());
+        assertNull(CancelReason.ACTED.messageKey());
+        assertNull(CancelReason.DAMAGED.messageKey());
+        assertNull(CancelReason.CANCELLED_BY_PLAYER.messageKey());
         assertNull(CancelReason.DIED.messageKey());
         assertNull(CancelReason.LOGGED_OUT.messageKey());
-        assertNotNull(CancelReason.CHANGED_DIMENSION.messageKey(),
-                "a player who walks through a portal is standing right there");
-        assertNotNull(CancelReason.LEFT_THE_WORLD.messageKey(),
-                "a player leaving the End after their first time sees no credits and can read");
+        assertNotNull(CancelReason.CHANGED_DIMENSION.messageKey());
+        assertNotNull(CancelReason.LEFT_THE_WORLD.messageKey());
+    }
+
+    @Test
+    @DisplayName("no cause both fades nowhere and speaks - an absent player cannot be told anything")
+    void noMessageWithoutPresence() {
+        for (CancelReason reason : CancelReason.values()) {
+            if (reason.messageKey() != null) {
+                assertTrue(reason.fades(),
+                        reason + " has a message but no fade, which would mean telling a player"
+                                + " who is not there");
+            }
+        }
     }
 }

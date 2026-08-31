@@ -13,9 +13,6 @@ public enum RefusalReason {
     /** The player is dead, or otherwise not in a state that can be moved. */
     NOT_ALIVE("homerecall.refused.not_alive"),
 
-    /** A cast is already running for this player. Pressing again does not restart it. */
-    ALREADY_RECALLING("homerecall.refused.already_recalling"),
-
     /** No personal spawn, and the world-spawn fallback is switched off. */
     NO_DESTINATION("homerecall.refused.no_destination"),
 

@@ -21,8 +21,8 @@ import net.minecraftforge.fml.relauncher.SideOnly;
  * <p>{@link ClientCastState} is static, and a client outlives every server it connects to. A
  * player who quits to the menu mid-cast never receives the end message, because the server that
  * would have sent it is already gone. Without the clear the belief survives into the next world
- * they join, where the guard would refuse every action until they happened to start and finish
- * another recall. The server would allow all of it, so nothing in any log would show why.
+ * they join, where a cast bar for a cast that no longer exists would sit filling on their screen
+ * until they happened to start and finish another recall.
  */
 @SideOnly(Side.CLIENT)
 public final class ClientCastLifecycle {

@@ -9,14 +9,13 @@ import net.minecraftforge.fml.common.network.simpleimpl.MessageContext;
 /**
  * A cast starting or ending, server to client.
  *
- * <p>Sent at those two transitions and nowhere else, never per tick. An eight-second cast puts two
+ * <p>Sent at those two transitions and nowhere else, never per tick. A six-second cast puts two
  * packets on the wire regardless of its length.
  *
- * <p>The client needs this for one reason: without it, it does not know a cast is running, so it
- * predicts every action the server is about to refuse. The player then watches a block appear and
- * vanish, an eating animation that never completes, and a stack count that drops and comes back.
- * Nothing is actually wrong in any of those cases, which is precisely what makes them look like
- * bugs.
+ * <p>The client needs this for one reason: the cast bar. Without it the client does not know a
+ * cast is running, so it has nothing to draw, no length to fill toward, and no way to tell a
+ * completion from a cancellation when the bar comes down — which is what the end transition's
+ * interrupted flag carries.
  *
  * <p>Carries the duration as well as the fact, so the cast bar can be drawn later without a second
  * message. The client is told nothing it could use to cheat: it already knows it pressed the key,

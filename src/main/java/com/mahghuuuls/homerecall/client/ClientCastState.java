@@ -12,8 +12,7 @@ import net.minecraftforge.fml.relauncher.SideOnly;
  * briefly wrong. The elapsed count is the client's own clock, generated locally because the
  * transition-only rule forbids per-tick progress on the wire; {@link ClientCastLifecycle} owns
  * when it may advance. The fade bookkeeping is pure presentation. None of it may be treated as
- * authority: it exists so the client stops predicting actions the server is about to refuse, and
- * so the cast bar has something to draw.
+ * authority: it exists so the cast bar has something to draw, and for nothing else.
  *
  * <p>Progress is counted here, on the client's own ticks, rather than synchronized. The server
  * says "a cast started, this long" and "it ended, this way", per the transition-only rule; two
@@ -112,8 +111,8 @@ public final class ClientCastState {
      * Forgets everything, fade included.
      *
      * <p>Called when leaving a world. The state is static and the client outlives any one server,
-     * so a belief left behind would have the player unable to act on the next world they join,
-     * with no cast anywhere to explain it.
+     * so a belief left behind would put a cast bar for a cast that no longer exists on the next
+     * world they join, filling toward a completion no server will ever send.
      */
     public static void clear() {
         casting = false;

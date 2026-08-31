@@ -4,7 +4,6 @@ import com.mahghuuuls.homerecall.CommonProxy;
 import com.mahghuuuls.homerecall.client.hud.CastBarRenderer;
 import com.mahghuuuls.homerecall.net.CastSyncMessage;
 import net.minecraft.client.Minecraft;
-import net.minecraft.entity.player.EntityPlayer;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
 import net.minecraftforge.fml.relauncher.Side;
@@ -26,18 +25,6 @@ public class ClientProxy extends CommonProxy {
         MinecraftForge.EVENT_BUS.register(KeyHandler.class);
         MinecraftForge.EVENT_BUS.register(ClientCastLifecycle.class);
         MinecraftForge.EVENT_BUS.register(CastBarRenderer.class);
-    }
-
-    /**
-     * Whether the client believes the local player is casting.
-     *
-     * <p>Answers only for the local player. Another player's cast is not synchronized yet, and a
-     * client that guessed would be worse than one that says no: the guard would refuse actions the
-     * server is going to allow, which is a bug the server can never correct.
-     */
-    @Override
-    public boolean isLocalPlayerCasting(EntityPlayer player) {
-        return player == Minecraft.getMinecraft().player && ClientCastState.casting();
     }
 
     /**

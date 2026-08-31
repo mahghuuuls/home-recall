@@ -12,6 +12,7 @@ import net.minecraft.util.text.TextComponentTranslation;
 import net.minecraft.world.WorldServer;
 import net.minecraft.server.MinecraftServer;
 import net.minecraftforge.fml.common.FMLCommonHandler;
+import net.minecraftforge.event.entity.living.LivingDamageEvent;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
@@ -61,7 +62,12 @@ public final class RecallService {
     /**
      * Starts a cast if the player may have one, telling them why if not.
      *
-     * @return the reason it was declined, or null when a cast has begun
+     * <p>A press while a cast is already running is the player cancelling it, so null does not
+     * mean a cast began; it means the press was accepted. A caller that wants to react to a start
+     * specifically must not use this return for it.
+     *
+     * @return the reason it was declined, or null when the press either began a cast or cancelled
+     *         the running one
      */
     public static RefusalReason requestRecall(EntityPlayerMP player) {
         if (player == null) {
@@ -71,13 +77,17 @@ public final class RecallService {
             return refuse(player, RefusalReason.NOT_ALIVE);
         }
         if (CASTS.containsKey(player.getUniqueID())) {
-            return refuse(player, RefusalReason.ALREADY_RECALLING);
+            // The second press is the player's own cancel, not a mistake to refuse. The one
+            // cancellation that is a choice gets its own cause, so the log can tell a deliberate
+            // stop from an accident.
+            cancel(player, CancelReason.CANCELLED_BY_PLAYER);
+            return null;
         }
 
         ConfigSnapshot config = ConfigSnapshot.current();
 
         // Resolved before the cast begins rather than at the end. A player who has nowhere to go
-        // should be told immediately, not left standing through eight seconds for nothing.
+        // should be told immediately, not left standing through six seconds for nothing.
         RecallDestination destination = SpawnResolver.resolve(player, config);
         if (destination == null) {
             Diagnostics.destinationUnresolved(player.getName(), config.fallbackToWorldSpawn());
@@ -99,11 +109,13 @@ public final class RecallService {
      * Everything that becomes true when a cast starts, in one place.
      *
      * <p>Paired with {@link #endCastEffects}. Keeping the two together is the point: the cast
-     * entry, the movement slow, and what the client believes start and stop as one thing, so a
-     * later path that ends a cast cannot end half of it.
+     * entry, its anchor, and what the client believes start and stop as one thing, so a later
+     * path that ends a cast cannot end half of it.
      */
     private static void beginCast(EntityPlayerMP player, ConfigSnapshot config) {
-        CastState cast = new CastState(config.castTimeTicks());
+        // The anchor is where the channel must be waited out. Any position past the tolerance,
+        // however reached, is the caster having left it.
+        CastState cast = new CastState(config.castTimeTicks(), player.posX, player.posY, player.posZ);
         CASTS.put(player.getUniqueID(), cast);
 
         // A new cast is a fresh slate for messages. Without this a refusal from the previous cast
@@ -111,37 +123,28 @@ public final class RecallService {
         // is the moment a player most wants to be told something.
         MESSAGES.forget(player.getUniqueID());
 
-        // Abandons an item use that was already running, without telling the item it finished. A
-        // player who was eating when they pressed the key stops eating; they do not swallow.
-        player.resetActiveHand();
-
-        // The configured speed is read once, here. A cast started before the option changed keeps
-        // the speed it began with.
-        boolean slowed = CastSlowdown.apply(player, config.castMovementSpeed());
-        Diagnostics.slowdownApplied(player.getName(), slowed, config.castMovementSpeed());
+        // An item use already in progress is deliberately left alone. The channel cancels new
+        // actions and otherwise stays out of the way; a player who was eating keeps eating, and
+        // if the item ends up moving them (a chorus fruit), the movement rule handles it like any
+        // other movement.
 
         // Told last, once everything that makes the cast real has happened. The client uses this
-        // only to stop predicting actions the server is about to refuse; it decides nothing.
+        // only to draw the bar; it decides nothing.
         HomeRecallNetwork.sendCastSync(player, true, cast.durationTicks(), false);
         Diagnostics.recallStarted(player.getName(), cast.durationTicks());
     }
 
     /**
-     * Everything a cast leaves behind, undone: the slow comes off and the client is told the cast
-     * is over.
+     * Everything a cast leaves behind, undone: the client is told the cast is over, and how.
      *
      * <p>Separate from the cast entry itself so the tick loop and {@link #cancel} can each remove
      * that entry at the moment that suits them and share everything after it.
      */
-    private static void endCastEffects(EntityPlayer player, String path, boolean interrupted) {
-        if (CastSlowdown.remove(player)) {
-            Diagnostics.slowdownRemoved(player.getName(), path);
-        }
+    private static void endCastEffects(EntityPlayer player, boolean interrupted) {
         if (player instanceof EntityPlayerMP) {
-            // Unconditional, unlike the slow above. A player whose configured speed was 1.0 never
-            // had a modifier but was still casting, and still has a client that must be told to
-            // stop refusing their actions. Tying this to the slow's removal would leave exactly
-            // those players unable to act until something else happened to correct them.
+            // The one effect a cast leaves on the client is its bar, and this is what removes or
+            // fades it. Which of the two rides on the wire, because the client cannot tell a
+            // completion from a cancellation on its own.
             HomeRecallNetwork.sendCastSync((EntityPlayerMP) player, false, 0, interrupted);
         }
     }
@@ -172,11 +175,10 @@ public final class RecallService {
      * later cannot be handled properly on one path and forgotten on the other.
      */
     private static void endCancelledCast(EntityPlayerMP player, CancelReason reason) {
-        // The same rule that decides the message decides the fade. A cause with something to say
-        // leaves the player standing there watching the bar, and REQ-043 wants that bar to freeze
-        // and fade; the silent causes are a death screen or an empty chair, where the bar must
-        // simply be gone.
-        endCastEffects(player, "cancelled: " + reason, reason.messageKey() != null);
+        // Two independent questions. The fade plays for every cause the player is present to see;
+        // a message accompanies only causes that are not their own obvious doing. Splitting them
+        // is what lets a self-evident break fade in silence.
+        endCastEffects(player, reason.fades());
         Diagnostics.recallCancelled(player.getName(), reason);
         String message = reason.messageKey();
         if (message != null) {
@@ -289,6 +291,13 @@ public final class RecallService {
                 endCancelledCast(player, CancelReason.DIED);
                 continue;
             }
+            if (entry.getValue().movedFrom(player.posX, player.posY, player.posZ)) {
+                // The channel's own rule: leaving the anchor breaks it, whoever or whatever did
+                // the moving. Checked before the tick so a final step cannot land the teleport.
+                CASTS.remove(id);
+                endCancelledCast(player, CancelReason.MOVED);
+                continue;
+            }
             if (!entry.getValue().tick()) {
                 continue;
             }
@@ -301,13 +310,14 @@ public final class RecallService {
                 HomeRecallMod.LOGGER.error("Home Recall failed while completing a recall for {}",
                         player.getName(), failure);
             } finally {
-                // In a finally block on purpose. A completion that throws must still give the
-                // player their speed back: the cast is already out of the map by this point, so
-                // nothing else would ever come along to remove it.
+                // In a finally block on purpose. A completion that throws must still take the
+                // client's bar down: the cast is already out of the map by this point, so nothing
+                // else would ever come along to tell them.
                 //
-                // Named for reaching the end rather than for teleporting, because completion can
-                // also end in a refusal. Which of the two happened is recorded by complete().
-                endCastEffects(player, "cast reached its end", false);
+                // Sent as a completion rather than a cancellation even when complete() refused,
+                // because either way the channel was stood through to its end. Which of the two
+                // happened is recorded by complete().
+                endCastEffects(player, false);
             }
         }
     }
@@ -319,11 +329,8 @@ public final class RecallService {
      * so without this a cast started before quitting to the menu would still be in the map when the
      * next world loads, and would complete against a player who never asked for it.
      *
-     * <p>No slow is removed here, and that is deliberate rather than an omission. The modifier is
-     * unsaved, so it is not written with the player and cannot come back; every player entity that
-     * carries one is about to be discarded. Walking the player list to strip a modifier from
-     * entities that will not exist a moment later would be code that looks like a safeguard while
-     * guarding nothing. {@link #onPlayerLoggedIn} is the real backstop.
+     * <p>Nothing else needs undoing here. Every entity that carried a cast is about to be
+     * discarded with its world, and {@link #onPlayerLoggedIn} backstops the map itself.
      */
     public static void onServerStopping() {
         Diagnostics.castsDiscardedAtServerStop(CASTS.size());
@@ -333,28 +340,23 @@ public final class RecallService {
     /**
      * Reports what a joining player brought with them, and strips anything they should not have.
      *
-     * <p>Three things, and none of them should ever find anything. A leftover slow cannot survive
-     * a restart because the modifier is unsaved. A leftover cast cannot survive a logout because
-     * the logout ends it. The client belief is cleared by the client itself when it loses its
-     * world.
+     * <p>Neither check should ever find anything. A leftover cast cannot survive a logout because
+     * the logout ends it, and the client clears its own belief when it loses its world.
      *
-     * <p>Which is exactly why all three are checked and the ordinary answer is written down. A
+     * <p>Which is exactly why both are checked and the ordinary answer is written down. A
      * cast correctly discarded at logout and a cast that never existed produce the same
      * observation on reconnect: the player is not teleported. Only a record saying "nothing was
      * being held" can tell a working logout from a mod that never started a cast at all.
      */
     @SubscribeEvent
     public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
-        if (CastSlowdown.remove(event.player)) {
-            Diagnostics.slowdownFoundAtLogin(event.player.getName());
-        }
         // Removed on its own line, not inside the report. This removal is load-bearing, and a
         // maintainer who reads the line as "just a log" and wraps or deletes it would silently
         // delete the cleanup with it.
         //
         // Deliberately not routed through cancel(). This is a backstop for something that should
         // not exist, not a cancellation: there is nothing to tell the player, no cause worth a
-        // constant, and the slow and client sync either side of it already cover the same case.
+        // constant, and the client resync just below already covers the same case.
         boolean staleCast = CASTS.remove(event.player.getUniqueID()) != null;
         Diagnostics.castStateAtLogin(event.player.getName(), staleCast);
         if (event.player instanceof EntityPlayerMP) {
@@ -395,18 +397,62 @@ public final class RecallService {
      * <p>No message. The player is looking at a death screen, and an action-bar line under it
      * would be shown to nobody.
      *
-     * <p>Lowest priority, and a cancelled event is ignored. This event can be cancelled, and a
-     * mod that cancels it means the player did not die: vanilla returns from onDeath without
-     * doing anything else. Running first would end a cast for a death that was then undone,
-     * leaving a player standing there mid-recall with nothing to show for it and no message,
-     * because this cause deliberately has none. Going last is what lets a totem-like mod have
-     * its say before this does.
+     * <p>Lowest priority. This event can be cancelled, and a mod that cancels it means the player
+     * did not die: vanilla returns from onDeath without doing anything else. Running first would
+     * end a cast for a death that was then undone, leaving a player standing there mid-recall with
+     * nothing to show for it and no message, because this cause deliberately has none. Going last
+     * is what lets a totem-like mod have its say before this does; the bus then never delivers the
+     * cancelled event here at all, so the isCanceled check is a statement of intent, not the
+     * mechanism.
      */
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onPlayerDeath(LivingDeathEvent event) {
         if (!event.isCanceled() && event.getEntityLiving() instanceof EntityPlayerMP) {
             cancel((EntityPlayerMP) event.getEntityLiving(), CancelReason.DIED);
         }
+    }
+
+    /**
+     * Ends the cast of a player who took damage that landed and survived it.
+     *
+     * <p>Lowest priority, for the same reason as the death handler above: another mod that cancels
+     * or absorbs the harm means the player was not hurt, and a cast must not break over damage
+     * that never happened. What actually delivers that guarantee is the priority alone; the bus
+     * never hands a cancelled event to a listener that has not asked for cancelled events, so the
+     * isCanceled check below can never see true and exists only as a statement of intent. This
+     * event fires after armor and absorption, so the amount here is what actually reached the
+     * health bar; anything above zero breaks the channel when the option is on.
+     *
+     * <p>A blow that kills is deliberately not taken here. This event fires before health drops,
+     * so on a killing blow this handler would run first and record a survivable hit for a player
+     * who is dead a moment later, putting the fade over their death screen. The death handler owns
+     * that case. The one thing this trades away: a lethal blow something then undoes — a totem,
+     * which restores health without ever firing a death event — leaves the channel running. A
+     * death a mod cancels without healing is different: health sits at zero and the tick loop's
+     * own health check ends the cast as the death it nearly was.
+     */
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public static void onPlayerDamaged(LivingDamageEvent event) {
+        if (event.isCanceled() || !(event.getEntityLiving() instanceof EntityPlayerMP)) {
+            return;
+        }
+        EntityPlayerMP player = (EntityPlayerMP) event.getEntityLiving();
+        // Two float comparisons before anything else; almost every damage event on the server is
+        // for somebody who is not casting, and most of the rest are filtered here too.
+        if (!breaksChannel(event.getAmount(), player.getHealth())) {
+            return;
+        }
+        if (isCasting(player) && ConfigSnapshot.current().cancelOnDamage()) {
+            cancel(player, CancelReason.DAMAGED);
+        }
+    }
+
+    /**
+     * Whether a landed amount, against this much remaining health, is the damage handler's to act
+     * on: some harm, but not the killing blow, which belongs to the death handler.
+     */
+    static boolean breaksChannel(float amount, float health) {
+        return amount > 0.0F && amount < health;
     }
 
     /**
@@ -431,7 +477,7 @@ public final class RecallService {
     /**
      * Resolves the destination again and moves the player.
      *
-     * <p>Resolved a second time on purpose. Eight seconds is long enough for a bed to be broken,
+     * <p>Resolved a second time on purpose. Six seconds is long enough for a bed to be broken,
      * and the destination decided at the start may no longer exist.
      */
     private static void complete(EntityPlayerMP player) {

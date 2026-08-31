@@ -41,7 +41,7 @@ class ConfigSurfaceTest {
 
     static {
         APPROVED.put("general", Arrays.asList(
-                "requireRecallStone", "castTimeSeconds", "castMovementSpeed", "allowCrossDimension",
+                "requireRecallStone", "castTimeSeconds", "cancelOnDamage", "allowCrossDimension",
                 "fallbackToWorldSpawn"));
         APPROVED.put("equipment", Arrays.asList(
                 "registerRecallStone", "registerRecallStoneRecipe", "keepRecallStoneOnDeath",
@@ -140,28 +140,6 @@ class ConfigSurfaceTest {
         assertNotNull(range, "castTimeSeconds must declare its range for the config screen");
         assertEquals(ConfigSnapshot.MIN_CAST_SECONDS, range.min());
         assertEquals(ConfigSnapshot.MAX_CAST_SECONDS, range.max());
-    }
-
-    @Test
-    @DisplayName("the cast speed range in the file comes from the one place that owns it")
-    void castMovementSpeedRangeMatchesTheOwner() {
-        Config.RangeDouble range = optionField("general", "castMovementSpeed")
-                .getAnnotation(Config.RangeDouble.class);
-        assertNotNull(range, "castMovementSpeed must declare its range for the config screen");
-        assertEquals(ConfigSnapshot.MIN_CAST_SPEED, range.min());
-        assertEquals(ConfigSnapshot.MAX_CAST_SPEED, range.max());
-    }
-
-    @Test
-    @DisplayName("castMovementSpeed says what 1.0 does, because off is not the default")
-    void castMovementSpeedExplainsHowToTurnItOff() {
-        // A pack author who dislikes the slow has one way out, and the generated file is the only
-        // place they will look for it. A range of 0.0 to 1.0 does not on its own say which end
-        // means "leave me alone".
-        String comment = commentOf(optionField("general", "castMovementSpeed")).toLowerCase();
-        assertTrue(comment.contains("1.0"), "the comment must name the value that disables it");
-        assertTrue(comment.contains("off") || comment.contains("full speed"),
-                "the comment must say what that value actually does");
     }
 
     private static Class<?> categoryClass(String category) {

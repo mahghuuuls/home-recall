@@ -48,12 +48,6 @@ public final class ConfigSnapshot {
     /** Longest cast the mod will run. Five minutes is already far past any plausible use. */
     static final int MAX_CAST_SECONDS = 300;
 
-    /** A full stop. Harsh, but the recall still completes, so it is a choice rather than a fault. */
-    static final double MIN_CAST_SPEED = 0.0D;
-
-    /** Normal speed, which means no modifier is applied at all. */
-    static final double MAX_CAST_SPEED = 1.0D;
-
     /**
      * The boot values of the two options that cannot change in place. Set exactly once, by
      * {@link #initialize()}. Null before that, and every read path checks it rather than assuming.
@@ -66,7 +60,7 @@ public final class ConfigSnapshot {
     private final boolean registerRecallStone;
     private final boolean requireRecallStone;
     private final int castTimeSeconds;
-    private final double castMovementSpeed;
+    private final boolean cancelOnDamage;
     private final boolean allowCrossDimension;
     private final boolean fallbackToWorldSpawn;
     private final boolean registerRecallStoneRecipe;
@@ -80,8 +74,7 @@ public final class ConfigSnapshot {
     private final List<String> corrections;
 
     private ConfigSnapshot(boolean registerRecallStone, boolean requireRecallStone,
-                           int castTimeSeconds, double castMovementSpeed,
-                           boolean allowCrossDimension,
+                           int castTimeSeconds, boolean cancelOnDamage, boolean allowCrossDimension,
                            boolean fallbackToWorldSpawn, boolean registerRecallStoneRecipe,
                            boolean keepRecallStoneOnDeath, boolean giveRecallStoneToNewPlayers,
                            boolean showInventoryButton, boolean enableParticles,
@@ -90,7 +83,7 @@ public final class ConfigSnapshot {
         this.registerRecallStone = registerRecallStone;
         this.requireRecallStone = requireRecallStone;
         this.castTimeSeconds = castTimeSeconds;
-        this.castMovementSpeed = castMovementSpeed;
+        this.cancelOnDamage = cancelOnDamage;
         this.allowCrossDimension = allowCrossDimension;
         this.fallbackToWorldSpawn = fallbackToWorldSpawn;
         this.registerRecallStoneRecipe = registerRecallStoneRecipe;
@@ -183,30 +176,11 @@ public final class ConfigSnapshot {
             cast = MAX_CAST_SECONDS;
         }
 
-        double speed = HomeRecallConfig.general.castMovementSpeed;
-        // NaN first, because it is the one value that would pass both range checks below. Every
-        // comparison against NaN is false, so a clamp written as two range tests would let it
-        // through and hand it to the attribute system, where a NaN movement speed is a player who
-        // cannot move and a log with nothing in it.
-        if (Double.isNaN(speed)) {
-            corrections.add("castMovementSpeed was not a number. Using " + MAX_CAST_SPEED
-                    + " this session, which leaves movement unchanged.");
-            speed = MAX_CAST_SPEED;
-        } else if (speed < MIN_CAST_SPEED) {
-            corrections.add("castMovementSpeed was " + speed + ", below the minimum of "
-                    + MIN_CAST_SPEED + ". Using " + MIN_CAST_SPEED + " this session.");
-            speed = MIN_CAST_SPEED;
-        } else if (speed > MAX_CAST_SPEED) {
-            corrections.add("castMovementSpeed was " + speed + ", above the maximum of "
-                    + MAX_CAST_SPEED + ". Using " + MAX_CAST_SPEED + " this session.");
-            speed = MAX_CAST_SPEED;
-        }
-
         return new ConfigSnapshot(
                 register,
                 require,
                 cast,
-                speed,
+                HomeRecallConfig.general.cancelOnDamage,
                 HomeRecallConfig.general.allowCrossDimension,
                 HomeRecallConfig.general.fallbackToWorldSpawn,
                 boot.registerRecallStoneRecipe,
@@ -249,12 +223,9 @@ public final class ConfigSnapshot {
         return castTimeSeconds * 20;
     }
 
-    /**
-     * How fast a casting player moves, as a fraction of normal speed, already within 0.0 to 1.0.
-     * A value of 1.0 means no slow is applied at all rather than a slow of no effect.
-     */
-    public double castMovementSpeed() {
-        return castMovementSpeed;
+    /** Whether damage that lands on a casting player breaks the channel. */
+    public boolean cancelOnDamage() {
+        return cancelOnDamage;
     }
 
     public boolean allowCrossDimension() {

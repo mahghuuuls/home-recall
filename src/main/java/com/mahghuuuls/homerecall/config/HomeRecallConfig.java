@@ -57,21 +57,12 @@ public final class HomeRecallConfig {
 
         @Config.Name("castTimeSeconds")
         @Config.Comment({
-                "Seconds a player must stand through before the recall completes.",
-                "They can still walk, jump, look around, and open their inventory during it,",
-                "but they move slowly and cannot attack or use items.",
-                "Example: 8. Values outside 1 to 300 are corrected to the nearest bound."})
+                "Seconds a player must stand still before the recall completes.",
+                "Moving, attacking, using, placing, breaking, or pressing the key again",
+                "cancels it. Looking around and opening the inventory do not.",
+                "Example: 6. Values outside 1 to 300 are corrected to the nearest bound."})
         @Config.RangeInt(min = ConfigSnapshot.MIN_CAST_SECONDS, max = ConfigSnapshot.MAX_CAST_SECONDS)
-        public int castTimeSeconds = 8;
-
-        @Config.Name("castMovementSpeed")
-        @Config.Comment({
-                "How fast a player moves while recalling, as a fraction of their normal speed.",
-                "Example: 0.2 is a fifth of normal. 1.0 turns the slow off and leaves them at",
-                "full speed. 0.0 stops them completely.",
-                "Values outside 0.0 to 1.0 are corrected to the nearest bound."})
-        @Config.RangeDouble(min = ConfigSnapshot.MIN_CAST_SPEED, max = ConfigSnapshot.MAX_CAST_SPEED)
-        public double castMovementSpeed = 0.2D;
+        public int castTimeSeconds = 6;
 
         @Config.Name("allowCrossDimension")
         @Config.Comment({
@@ -79,6 +70,15 @@ public final class HomeRecallConfig {
                 "for example returning from the Nether to an Overworld bed.",
                 "false refuses the recall instead, and says so."})
         public boolean allowCrossDimension = true;
+
+        @Config.Name("cancelOnDamage")
+        @Config.Comment({
+                "Cancel a running recall when the player takes damage that lands.",
+                "Damage that armor or another mod fully absorbs does not count.",
+                "false makes the channel ignore the damage itself. The knockback of a",
+                "hit still moves the player, and movement cancels regardless, so only",
+                "knockback-free harm such as fire or poison is truly ignored."})
+        public boolean cancelOnDamage = true;
 
         @Config.Name("fallbackToWorldSpawn")
         @Config.Comment({

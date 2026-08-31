@@ -38,11 +38,11 @@ class NotificationThrottleTest {
     @DisplayName("the same cause inside the window is suppressed")
     void repeatInsideWindowSuppressed() {
         NotificationThrottle throttle = new NotificationThrottle(WINDOW);
-        throttle.allow(alice, RefusalReason.ALREADY_RECALLING.translationKey(), 0L);
+        throttle.allow(alice, RefusalReason.NOT_ALIVE.translationKey(), 0L);
 
         // A held key at twenty ticks a second. Every one of these is the same cause.
         for (long t = 50L; t < WINDOW; t += 50L) {
-            assertFalse(throttle.allow(alice, RefusalReason.ALREADY_RECALLING.translationKey(), t),
+            assertFalse(throttle.allow(alice, RefusalReason.NOT_ALIVE.translationKey(), t),
                     "a repeat at " + t + "ms should still be inside the " + WINDOW + "ms window");
         }
     }
@@ -51,20 +51,20 @@ class NotificationThrottleTest {
     @DisplayName("the same cause once the window has passed is shown again")
     void repeatAfterWindowShown() {
         NotificationThrottle throttle = new NotificationThrottle(WINDOW);
-        throttle.allow(alice, RefusalReason.ALREADY_RECALLING.translationKey(), 0L);
+        throttle.allow(alice, RefusalReason.NOT_ALIVE.translationKey(), 0L);
 
-        assertFalse(throttle.allow(alice, RefusalReason.ALREADY_RECALLING.translationKey(), WINDOW - 1L));
-        assertTrue(throttle.allow(alice, RefusalReason.ALREADY_RECALLING.translationKey(), WINDOW),
+        assertFalse(throttle.allow(alice, RefusalReason.NOT_ALIVE.translationKey(), WINDOW - 1L));
+        assertTrue(throttle.allow(alice, RefusalReason.NOT_ALIVE.translationKey(), WINDOW),
                 "the window is exclusive at its own length");
     }
 
     @Test
     @DisplayName("a different cause is never suppressed, however soon it arrives")
     void differentCauseNeverSuppressed() {
-        // The rule a time-only window would break. A player who is told they are already recalling
-        // and then, one tick later, that they have nowhere to go must hear the second thing.
+        // The rule a time-only window would break. A player who is told they cannot recall right
+        // now and then, one tick later, that they have nowhere to go must hear the second thing.
         NotificationThrottle throttle = new NotificationThrottle(WINDOW);
-        throttle.allow(alice, RefusalReason.ALREADY_RECALLING.translationKey(), 0L);
+        throttle.allow(alice, RefusalReason.NOT_ALIVE.translationKey(), 0L);
 
         assertTrue(throttle.allow(alice, RefusalReason.NO_DESTINATION.translationKey(), 1L));
     }
@@ -73,11 +73,11 @@ class NotificationThrottleTest {
     @DisplayName("switching cause and back still suppresses only a genuine repeat")
     void causeSwitchResetsTheWindow() {
         NotificationThrottle throttle = new NotificationThrottle(WINDOW);
-        throttle.allow(alice, RefusalReason.ALREADY_RECALLING.translationKey(), 0L);
+        throttle.allow(alice, RefusalReason.NOT_ALIVE.translationKey(), 0L);
         throttle.allow(alice, RefusalReason.NO_DESTINATION.translationKey(), 10L);
 
         // Back to the first cause. It is no longer the last one shown, so it is not a repeat.
-        assertTrue(throttle.allow(alice, RefusalReason.ALREADY_RECALLING.translationKey(), 20L));
+        assertTrue(throttle.allow(alice, RefusalReason.NOT_ALIVE.translationKey(), 20L));
     }
 
     @Test
@@ -86,7 +86,7 @@ class NotificationThrottleTest {
         // Both enums go through the same throttle. A cancellation must not be silenced by a
         // refusal that happened to be the last thing this player was told.
         NotificationThrottle throttle = new NotificationThrottle(WINDOW);
-        throttle.allow(alice, RefusalReason.ALREADY_RECALLING.translationKey(), 0L);
+        throttle.allow(alice, RefusalReason.NOT_ALIVE.translationKey(), 0L);
 
         assertTrue(throttle.allow(alice, CancelReason.CHANGED_DIMENSION.messageKey(), 1L));
     }
@@ -95,9 +95,9 @@ class NotificationThrottleTest {
     @DisplayName("one player's messages never suppress another's")
     void playersAreIndependent() {
         NotificationThrottle throttle = new NotificationThrottle(WINDOW);
-        throttle.allow(alice, RefusalReason.ALREADY_RECALLING.translationKey(), 0L);
+        throttle.allow(alice, RefusalReason.NOT_ALIVE.translationKey(), 0L);
 
-        assertTrue(throttle.allow(bob, RefusalReason.ALREADY_RECALLING.translationKey(), 1L));
+        assertTrue(throttle.allow(bob, RefusalReason.NOT_ALIVE.translationKey(), 1L));
     }
 
     @Test
@@ -120,9 +120,9 @@ class NotificationThrottleTest {
         // Called when a player leaves. Two things ride on it: the maps do not grow for the life of
         // the server, and a player who rejoins is not silenced by something they were told before.
         NotificationThrottle throttle = new NotificationThrottle(WINDOW);
-        throttle.allow(alice, RefusalReason.ALREADY_RECALLING.translationKey(), 0L);
+        throttle.allow(alice, RefusalReason.NOT_ALIVE.translationKey(), 0L);
         throttle.forget(alice);
 
-        assertTrue(throttle.allow(alice, RefusalReason.ALREADY_RECALLING.translationKey(), 1L));
+        assertTrue(throttle.allow(alice, RefusalReason.NOT_ALIVE.translationKey(), 1L));
     }
 }

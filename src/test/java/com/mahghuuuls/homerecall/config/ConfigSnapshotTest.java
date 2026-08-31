@@ -5,10 +5,16 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import net.minecraftforge.common.config.Config;
+
+import java.lang.reflect.Field;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -25,7 +31,7 @@ class ConfigSnapshotTest {
     private boolean originalRegisterRecipe;
     private boolean originalRequire;
     private int originalCast;
-    private double originalCastSpeed;
+    private boolean originalCancelOnDamage;
     private boolean originalCrossDimension;
     private boolean originalWorldSpawn;
     private boolean originalKeepOnDeath;
@@ -45,7 +51,7 @@ class ConfigSnapshotTest {
         originalRegisterRecipe = HomeRecallConfig.equipment.registerRecallStoneRecipe;
         originalRequire = HomeRecallConfig.general.requireRecallStone;
         originalCast = HomeRecallConfig.general.castTimeSeconds;
-        originalCastSpeed = HomeRecallConfig.general.castMovementSpeed;
+        originalCancelOnDamage = HomeRecallConfig.general.cancelOnDamage;
         originalCrossDimension = HomeRecallConfig.general.allowCrossDimension;
         originalWorldSpawn = HomeRecallConfig.general.fallbackToWorldSpawn;
         originalKeepOnDeath = HomeRecallConfig.equipment.keepRecallStoneOnDeath;
@@ -64,7 +70,7 @@ class ConfigSnapshotTest {
         HomeRecallConfig.equipment.registerRecallStoneRecipe = originalRegisterRecipe;
         HomeRecallConfig.general.requireRecallStone = originalRequire;
         HomeRecallConfig.general.castTimeSeconds = originalCast;
-        HomeRecallConfig.general.castMovementSpeed = originalCastSpeed;
+        HomeRecallConfig.general.cancelOnDamage = originalCancelOnDamage;
         HomeRecallConfig.general.allowCrossDimension = originalCrossDimension;
         HomeRecallConfig.general.fallbackToWorldSpawn = originalWorldSpawn;
         HomeRecallConfig.equipment.keepRecallStoneOnDeath = originalKeepOnDeath;
@@ -85,8 +91,8 @@ class ConfigSnapshotTest {
 
         assertTrue(snapshot.registerRecallStone());
         assertTrue(snapshot.requireRecallStone());
-        assertEquals(8, snapshot.castTimeSeconds());
-        assertEquals(0.2D, snapshot.castMovementSpeed(), 0.0001D);
+        assertEquals(6, snapshot.castTimeSeconds());
+        assertTrue(snapshot.cancelOnDamage());
         assertTrue(snapshot.allowCrossDimension());
         assertTrue(snapshot.fallbackToWorldSpawn());
         assertTrue(snapshot.registerRecallStoneRecipe());
@@ -102,10 +108,10 @@ class ConfigSnapshotTest {
     }
 
     @Test
-    @DisplayName("the default cast time is 160 ticks")
+    @DisplayName("the default cast time is 120 ticks")
     void defaultCastTicks() {
         ConfigSnapshot.initialize();
-        assertEquals(160, ConfigSnapshot.current().castTimeTicks());
+        assertEquals(120, ConfigSnapshot.current().castTimeTicks());
     }
 
     @Test
@@ -216,10 +222,23 @@ class ConfigSnapshotTest {
     }
 
     @Test
+    @DisplayName("the two boot-pinned options are not cross-wired either")
+    void pinnedOptionsAreNotCrossWired() {
+        // The one-at-a-time sweep cannot reach the pinned pair, and both default true, so a swap
+        // of their constructor slots would survive every default-reading test. Pinning them to
+        // different values at boot is the check that swap cannot survive.
+        HomeRecallConfig.equipment.registerRecallStoneRecipe = false;
+        ConfigSnapshot.initialize();
+
+        assertTrue(ConfigSnapshot.current().registerRecallStone());
+        assertFalse(ConfigSnapshot.current().registerRecallStoneRecipe());
+    }
+
+    @Test
     @DisplayName("a live option does follow a later edit")
     void liveValuesFollowLaterEdits() {
         ConfigSnapshot.initialize();
-        assertEquals(8, ConfigSnapshot.current().castTimeSeconds());
+        assertEquals(6, ConfigSnapshot.current().castTimeSeconds());
         assertTrue(ConfigSnapshot.current().showInventoryButton());
 
         HomeRecallConfig.general.castTimeSeconds = 20;
@@ -288,6 +307,72 @@ class ConfigSnapshotTest {
     }
 
     @Test
+    @DisplayName("flipping one option moves exactly one accessor, so no two are cross-wired")
+    void eachOptionMovesOnlyItsOwnAccessor() throws Exception {
+        // The snapshot constructor takes thirteen booleans by position. A transposition among
+        // them compiles, and with most defaults being true it would also pass every test that
+        // only reads defaults. Flipping the options one at a time is the check a swap cannot
+        // survive: the flipped option's accessor must move, and no other may. The two boot-pinned
+        // options cannot be swept this way; bootPinnedValuesIgnoreLaterEdits pins them apart.
+        //
+        // Reflection on purpose: each option's file name, its config field, and its snapshot
+        // accessor share one name, and resolving both ends from that one name also proves the
+        // three still agree.
+        Map<String, Object> options = new LinkedHashMap<String, Object>();
+        options.put("requireRecallStone", HomeRecallConfig.general);
+        options.put("cancelOnDamage", HomeRecallConfig.general);
+        options.put("allowCrossDimension", HomeRecallConfig.general);
+        options.put("fallbackToWorldSpawn", HomeRecallConfig.general);
+        options.put("keepRecallStoneOnDeath", HomeRecallConfig.equipment);
+        options.put("giveRecallStoneToNewPlayers", HomeRecallConfig.equipment);
+        options.put("showInventoryButton", HomeRecallConfig.equipment);
+        options.put("enableParticles", HomeRecallConfig.visual);
+        options.put("enableCastHud", HomeRecallConfig.visual);
+        options.put("enableRecallSounds", HomeRecallConfig.audio);
+        options.put("enableDiagnostics", HomeRecallConfig.diagnostics);
+
+        for (String flipped : options.keySet()) {
+            restoreDefaults();
+            ConfigSnapshot.initialize();
+            Map<String, Boolean> baseline = new LinkedHashMap<String, Boolean>();
+            for (String option : options.keySet()) {
+                baseline.put(option, snapshotValue(option));
+            }
+
+            Field field = optionField(options.get(flipped), flipped);
+            field.setBoolean(options.get(flipped), !field.getBoolean(options.get(flipped)));
+            ConfigSnapshot.refresh();
+
+            for (String option : options.keySet()) {
+                boolean now = snapshotValue(option);
+                if (option.equals(flipped)) {
+                    assertNotEquals(baseline.get(option), Boolean.valueOf(now),
+                            flipped + " was flipped but its accessor did not move");
+                } else {
+                    assertEquals(baseline.get(option), Boolean.valueOf(now),
+                            option + " moved when only " + flipped + " was flipped");
+                }
+            }
+        }
+    }
+
+    /** The snapshot accessor named exactly like the option, read from the current snapshot. */
+    private static boolean snapshotValue(String option) throws Exception {
+        return (Boolean) ConfigSnapshot.class.getMethod(option).invoke(ConfigSnapshot.current());
+    }
+
+    /** The config field carrying this option's {@code @Config.Name} inside its category object. */
+    private static Field optionField(Object category, String option) {
+        for (Field field : category.getClass().getDeclaredFields()) {
+            Config.Name name = field.getAnnotation(Config.Name.class);
+            if (name != null && option.equals(name.value())) {
+                return field;
+            }
+        }
+        throw new AssertionError("no option " + option + " in " + category.getClass().getName());
+    }
+
+    @Test
     @DisplayName("the corrections list cannot be modified by a caller")
     void correctionsAreUnmodifiable() {
         HomeRecallConfig.general.castTimeSeconds = 0;
@@ -299,72 +384,5 @@ class ConfigSnapshotTest {
         } catch (UnsupportedOperationException expected) {
             // The snapshot is immutable, including its lists.
         }
-    }
-
-    @Test
-    @DisplayName("a cast speed below zero is corrected to a full stop")
-    void castSpeedBelowMinimumIsClamped() {
-        HomeRecallConfig.general.castMovementSpeed = -1.0D;
-        ConfigSnapshot.initialize();
-
-        ConfigSnapshot snapshot = ConfigSnapshot.current();
-        assertEquals(0.0D, snapshot.castMovementSpeed(), 0.0001D);
-        assertEquals(1, snapshot.corrections().size());
-        assertTrue(snapshot.corrections().get(0).contains("castMovementSpeed"),
-                "the correction must name the key the user has to fix");
-    }
-
-    @Test
-    @DisplayName("a cast speed above one is corrected to normal speed")
-    void castSpeedAboveMaximumIsClamped() {
-        HomeRecallConfig.general.castMovementSpeed = 5.0D;
-        ConfigSnapshot.initialize();
-
-        ConfigSnapshot snapshot = ConfigSnapshot.current();
-        assertEquals(1.0D, snapshot.castMovementSpeed(), 0.0001D);
-        assertEquals(1, snapshot.corrections().size());
-    }
-
-    @Test
-    @DisplayName("both bounds are usable values, not rejected ones")
-    void castSpeedBoundsAreAccepted() {
-        HomeRecallConfig.general.castMovementSpeed = 0.0D;
-        ConfigSnapshot.initialize();
-        assertEquals(0.0D, ConfigSnapshot.current().castMovementSpeed(), 0.0001D);
-        assertTrue(ConfigSnapshot.current().corrections().isEmpty(),
-                "a full stop is a harsh setting, not an invalid one");
-
-        ConfigSnapshot.resetForTest();
-        HomeRecallConfig.general.castMovementSpeed = 1.0D;
-        ConfigSnapshot.initialize();
-        assertEquals(1.0D, ConfigSnapshot.current().castMovementSpeed(), 0.0001D);
-        assertTrue(ConfigSnapshot.current().corrections().isEmpty(),
-                "turning the slow off is a supported choice, not a mistake");
-    }
-
-    @Test
-    @DisplayName("a cast speed that is not a number is corrected rather than passed through")
-    void castSpeedNaNIsCorrected() {
-        // The one value a plain two-sided range check lets through: every comparison against NaN
-        // is false, so `< min` and `> max` both miss it. It would then reach the movement-speed
-        // attribute, where it produces a player who cannot move and a log that says nothing.
-        HomeRecallConfig.general.castMovementSpeed = Double.NaN;
-        ConfigSnapshot.initialize();
-
-        ConfigSnapshot snapshot = ConfigSnapshot.current();
-        assertEquals(1.0D, snapshot.castMovementSpeed(), 0.0001D);
-        assertEquals(1, snapshot.corrections().size());
-        assertTrue(snapshot.corrections().get(0).contains("castMovementSpeed"));
-    }
-
-    @Test
-    @DisplayName("a valid cast speed is carried through untouched and reports nothing")
-    void castSpeedIsCarriedThrough() {
-        HomeRecallConfig.general.castMovementSpeed = 0.45D;
-        ConfigSnapshot.initialize();
-
-        ConfigSnapshot snapshot = ConfigSnapshot.current();
-        assertEquals(0.45D, snapshot.castMovementSpeed(), 0.0001D);
-        assertTrue(snapshot.corrections().isEmpty());
     }
 }

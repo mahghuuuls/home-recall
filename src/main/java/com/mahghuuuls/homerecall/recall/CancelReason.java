@@ -4,64 +4,69 @@ package com.mahghuuuls.homerecall.recall;
  * Why a running cast ended before it could complete.
  *
  * <p>Separate from {@link RefusalReason}, which says why one never started. A player who presses
- * the key and gets nothing, and a player whose cast was quietly dropped eight seconds later, have
- * very different problems, and collapsing the two would lose exactly that distinction.
+ * the key and gets nothing, and a player whose channel quietly broke, have very different
+ * problems, and collapsing the two would lose exactly that distinction.
  *
- * <p>Two causes carry no message, and only two. A player who has just died is looking at a death
- * screen, and one who has logged out is not there at all; an action-bar line would be shown to
- * nobody. Every other cause leaves the player standing somewhere they can read one, so every other
- * cause has one.
+ * <p>Each cause answers two independent questions, and they are independent on purpose.
+ * {@link #fades()} asks "was the player present to watch the bar" — every cause but death and
+ * logout, where nobody is looking. {@link #messageKey()} asks "was this not their own obvious
+ * doing" — a player who stepped, swung, got hit, or pressed the key again needs no sentence about
+ * it, while a portal or the End exit is worth a line. The two rules were once one; splitting them
+ * is what lets a self-evident cause fade in silence.
  */
 public enum CancelReason {
 
-    /** The player died. No message: they are on the death screen and cannot read one. */
-    DIED(null),
+    /** The player died. No fade and no message: they are looking at a death screen. */
+    DIED(false, null),
 
-    /** The player disconnected. No message: nobody is there to see it. */
-    LOGGED_OUT(null),
-
-    /**
-     * The player changed dimension by some route other than this recall completing.
-     *
-     * <p>A portal is the ordinary case. A spectator teleport across dimensions reaches this too,
-     * deliberately: it is still a dimension change the recall did not ask for, and the destination
-     * it resolved may no longer be reachable.
-     */
-    CHANGED_DIMENSION("homerecall.cancelled.changed_dimension"),
+    /** The player disconnected. No fade and no message: nobody is there to see either. */
+    LOGGED_OUT(false, null),
 
     /**
-     * The player's entity was removed from the world while they were still alive.
-     *
-     * <p>In practice this is the End exit portal, which builds the player a new entity rather than
-     * moving the one they had. It fires no dimension-change event, so the only way to notice is
-     * that the entity a cast belongs to has gone.
-     *
-     * <p>This does carry a message, and an earlier version of this enum said it should not. The
-     * reasoning then was that the player lands on the credits screen and could not read one. That
-     * is true exactly once: vanilla sends the credits only while the player's {@code seenCredits}
-     * flag is false, so every End exit after their first drops them straight into the Overworld,
-     * able to read an action bar and with no idea their recall had gone.
+     * The player changed dimension by some route other than this recall completing. A portal is
+     * the ordinary case; a spectator teleport across dimensions reaches this too, deliberately.
+     * Kept as a message: entering a portal is not obviously "the thing that ate my recall".
      */
-    LEFT_THE_WORLD("homerecall.cancelled.left_the_world");
+    CHANGED_DIMENSION(true, "homerecall.cancelled.changed_dimension"),
 
+    /**
+     * The player's entity was removed from the world while they were still alive — in practice,
+     * the End exit portal, which fires no dimension-change event; only the tick loop can notice
+     * it. Kept as a message for the same reason as the portal.
+     */
+    LEFT_THE_WORLD(true, "homerecall.cancelled.left_the_world"),
+
+    /** The player moved away from the anchor, by any means. Fade only: they know they moved. */
+    MOVED(true, null),
+
+    /** The player did something and it happened. Fade only: they watched themselves do it. */
+    ACTED(true, null),
+
+    /** The player took damage that landed. Fade only: the hit itself is the message. */
+    DAMAGED(true, null),
+
+    /** The player pressed the key again. Fade only: it worked, and the bar fading says so. */
+    CANCELLED_BY_PLAYER(true, null);
+
+    private final boolean fades;
     private final String messageKey;
 
-    CancelReason(String messageKey) {
+    CancelReason(boolean fades, String messageKey) {
+        this.fades = fades;
         this.messageKey = messageKey;
     }
 
     /**
-     * The language key for the short message shown to the player, or null when this cause happens
-     * somewhere nobody could read one.
-     *
-     * <p>Null rather than a companion "does this one have a message" call. One accessor is one
-     * thing for a caller to get wrong instead of two.
-     *
-     * <p><b>This answer also decides the cast bar.</b> A cause with a message leaves the player
-     * standing there watching the bar, so it freezes and fades; a silent cause is a death screen
-     * or an empty chair, so the bar is simply removed. The two rules are one rule on purpose:
-     * both ask "is the player present to see anything", and a cause that split them would be
-     * describing an impossible player. Adding a cause here sets both behaviors at once.
+     * Whether the bar freezes and fades for this cause, which is the rule "the player was present
+     * to see it". False only for death and logout.
+     */
+    public boolean fades() {
+        return fades;
+    }
+
+    /**
+     * The language key for a short message, or null for a cause that is the player's own obvious
+     * doing — or that nobody is present to read.
      */
     public String messageKey() {
         return messageKey;
