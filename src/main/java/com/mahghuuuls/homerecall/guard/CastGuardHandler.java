@@ -26,8 +26,8 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
  * <p>Looking around, changing hotbar slot, opening a GUI, and dropping an item are deliberately
  * absent. They stay free and break nothing; the toss in particular is a fidget, not an act upon
  * the world. Movement is not here either: it has no event, and the cast's own tick loop watches
- * the anchor. An item use already running when the cast starts is also not this class's business:
- * only starting a use is an action, so an eat in progress finishes in peace.
+ * the anchor. An item use in progress never meets a starting cast at all: the request itself is
+ * refused while a use is running, so an eat finishes in peace because the cast never began.
  */
 public final class CastGuardHandler {
 

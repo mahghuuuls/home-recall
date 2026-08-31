@@ -52,21 +52,29 @@ class DimensionRefusalTest {
         Set<String> defined = LangKeys.read();
 
         for (RefusalReason reason : RefusalReason.values()) {
-            assertTrue(defined.contains(reason.translationKey()),
-                    reason + " has no text in en_us.lang: " + reason.translationKey());
+            // The silent refusal has no key on purpose; which reasons may be silent is pinned by
+            // RefusalReasonTest, not here.
+            if (reason.translationKey() != null) {
+                assertTrue(defined.contains(reason.translationKey()),
+                        reason + " has no text in en_us.lang: " + reason.translationKey());
+            }
         }
     }
 
     @Test
-    @DisplayName("every refusal reason has a distinct, non-empty message key")
+    @DisplayName("every refusal reason that speaks has a distinct, non-empty message key")
     void everyReasonIsDistinct() {
         // A duplicated key would make two causes show the same text, which is the same failure as
-        // a duplicated constant wearing a different name.
+        // a duplicated constant wearing a different name. Null means deliberately silent and is
+        // pinned by RefusalReasonTest; empty is always a mistake.
         RefusalReason[] reasons = RefusalReason.values();
         for (int i = 0; i < reasons.length; i++) {
             String key = reasons[i].translationKey();
-            if (key == null || key.isEmpty()) {
-                throw new AssertionError(reasons[i] + " has no message key");
+            if (key == null) {
+                continue;
+            }
+            if (key.isEmpty()) {
+                throw new AssertionError(reasons[i] + " has an empty message key");
             }
             for (int j = i + 1; j < reasons.length; j++) {
                 if (key.equals(reasons[j].translationKey())) {

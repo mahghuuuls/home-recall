@@ -41,7 +41,9 @@ class CancelReasonTest {
         // could have left behind. Keybinding keys are the one family owned outside these enums.
         Set<String> owned = new HashSet<String>();
         for (RefusalReason refusal : RefusalReason.values()) {
-            owned.add(refusal.translationKey());
+            if (refusal.translationKey() != null) {
+                owned.add(refusal.translationKey());
+            }
         }
         for (CancelReason reason : CancelReason.values()) {
             if (reason.messageKey() != null) {
@@ -64,7 +66,9 @@ class CancelReasonTest {
         // to avoid.
         Set<String> seen = new HashSet<String>();
         for (RefusalReason refusal : RefusalReason.values()) {
-            assertTrue(seen.add(refusal.translationKey()), "duplicate key " + refusal);
+            if (refusal.translationKey() != null) {
+                assertTrue(seen.add(refusal.translationKey()), "duplicate key " + refusal);
+            }
         }
         for (CancelReason reason : CancelReason.values()) {
             if (reason.messageKey() != null) {

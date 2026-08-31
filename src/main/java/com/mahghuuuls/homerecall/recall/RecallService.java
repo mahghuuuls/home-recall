@@ -83,6 +83,13 @@ public final class RecallService {
             cancel(player, CancelReason.CANCELLED_BY_PLAYER);
             return null;
         }
+        if (player.isHandActive()) {
+            // Mid-eat, mid-drink, mid-draw, or blocking. Refused rather than started, and after
+            // the second-press branch on purpose: a cancel must always win. Silent by the owner's
+            // rule — the player knows exactly what their own hands are doing — and before any
+            // destination work, so a press that will be refused costs no chunk load.
+            return refuse(player, RefusalReason.USING_ITEM);
+        }
 
         ConfigSnapshot config = ConfigSnapshot.current();
 
@@ -123,10 +130,8 @@ public final class RecallService {
         // is the moment a player most wants to be told something.
         MESSAGES.forget(player.getUniqueID());
 
-        // An item use already in progress is deliberately left alone. The channel cancels new
-        // actions and otherwise stays out of the way; a player who was eating keeps eating, and
-        // if the item ends up moving them (a chorus fruit), the movement rule handles it like any
-        // other movement.
+        // No item use can be running here: requestRecall refuses the press while one is. What
+        // reaches this method is a player whose hands were free.
 
         // Told last, once everything that makes the cast real has happened. The client uses this
         // only to draw the bar; it decides nothing.
@@ -485,8 +490,9 @@ public final class RecallService {
         RecallDestination destination = SpawnResolver.resolve(player, config);
         if (destination == null) {
             Diagnostics.destinationUnresolved(player.getName(), config.fallbackToWorldSpawn());
-            Diagnostics.recallRefused(player.getName(), RefusalReason.NO_DESTINATION);
-            tell(player, RefusalReason.NO_DESTINATION.translationKey());
+            // Through refuse() rather than a bare tell, so this path shares the record-and-speak
+            // rule — including the null-key guard — instead of carrying its own copy of it.
+            refuse(player, RefusalReason.NO_DESTINATION);
             return;
         }
         RefusalReason dimensionRefusal = dimensionRefusalFor(
@@ -494,8 +500,7 @@ public final class RecallService {
         if (dimensionRefusal != null) {
             // The destination moved to another dimension during the cast. Same decision as at the
             // start, made in the same place, so the two cannot drift apart.
-            Diagnostics.recallRefused(player.getName(), dimensionRefusal);
-            tell(player, dimensionRefusal.translationKey());
+            refuse(player, dimensionRefusal);
             return;
         }
 
@@ -556,10 +561,17 @@ public final class RecallService {
         return 256.0D;
     }
 
-    /** Records the refusal, tells the player, and returns the reason so callers can pass it on. */
+    /**
+     * Records the refusal, tells the player when the reason speaks, and returns the reason so
+     * callers can pass it on. A reason with no key is recorded and shown to nobody — the log is
+     * the only place a silent refusal exists, and that record is what separates it from a broken
+     * keybind.
+     */
     private static RefusalReason refuse(EntityPlayerMP player, RefusalReason reason) {
         Diagnostics.recallRefused(player.getName(), reason);
-        tell(player, reason.translationKey());
+        if (reason.translationKey() != null) {
+            tell(player, reason.translationKey());
+        }
         return reason;
     }
 
