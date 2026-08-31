@@ -12,12 +12,14 @@ import net.minecraft.util.text.TextComponentTranslation;
 import net.minecraft.world.WorldServer;
 import net.minecraft.server.MinecraftServer;
 import net.minecraftforge.fml.common.FMLCommonHandler;
+import net.minecraftforge.event.entity.living.LivingDeathEvent;
+import net.minecraftforge.fml.common.eventhandler.EventPriority;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.PlayerEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 
+import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.UUID;
 
@@ -46,8 +48,12 @@ public final class RecallService {
      */
     private static final long REFUSAL_QUIET_MILLIS = 2000L;
 
-    private static final Map<UUID, Long> LAST_REFUSAL_AT = new HashMap<UUID, Long>();
-    private static final Map<UUID, RefusalReason> LAST_REFUSAL = new HashMap<UUID, RefusalReason>();
+    /**
+     * The anti-spam rule, shared by refusals and cancellations so there is one window rather than
+     * two that could drift apart.
+     */
+    private static final NotificationThrottle MESSAGES =
+            new NotificationThrottle(REFUSAL_QUIET_MILLIS);
 
     private RecallService() {
     }
@@ -92,14 +98,18 @@ public final class RecallService {
     /**
      * Everything that becomes true when a cast starts, in one place.
      *
-     * <p>Paired with {@link #endCast}. Keeping the two together is the point: the cast entry and
-     * the movement slow start and stop as one thing, so a later path that ends a cast cannot end
-     * half of it. Every caller uses the pair; none of them touches the map or the slow directly.
+     * <p>Paired with {@link #endCastEffects}. Keeping the two together is the point: the cast
+     * entry, the movement slow, and what the client believes start and stop as one thing, so a
+     * later path that ends a cast cannot end half of it.
      */
     private static void beginCast(EntityPlayerMP player, ConfigSnapshot config) {
         CastState cast = new CastState(config.castTimeTicks());
         CASTS.put(player.getUniqueID(), cast);
-        LAST_REFUSAL.remove(player.getUniqueID());
+
+        // A new cast is a fresh slate for messages. Without this a refusal from the previous cast
+        // could still be inside the quiet window and silence the first refusal of this one, which
+        // is the moment a player most wants to be told something.
+        MESSAGES.forget(player.getUniqueID());
 
         // Abandons an item use that was already running, without telling the item it finished. A
         // player who was eating when they pressed the key stops eating; they do not swallow.
@@ -117,25 +127,11 @@ public final class RecallService {
     }
 
     /**
-     * Everything that stops being true when a cast ends, in one place.
-     *
-     * <p>Safe to call for a player who is not casting, so every lifecycle path can call it without
-     * first working out whether it needs to.
-     *
-     * @param path what ended it, for the record
-     */
-    private static void endCast(EntityPlayer player, String path) {
-        CASTS.remove(player.getUniqueID());
-        endCastEffects(player, path);
-    }
-
-    /**
      * Everything a cast leaves behind, undone: the slow comes off and the client is told the cast
      * is over.
      *
-     * <p>Separate from {@link #endCast} for one reason. The tick loop removes the cast entry
-     * through its iterator, because removing it from the map while iterating would fail, so it
-     * calls this for the rest. Both halves still have exactly one implementation between them.
+     * <p>Separate from the cast entry itself so the tick loop and {@link #cancel} can each remove
+     * that entry at the moment that suits them and share everything after it.
      */
     private static void endCastEffects(EntityPlayer player, String path) {
         if (CastSlowdown.remove(player)) {
@@ -147,6 +143,40 @@ public final class RecallService {
             // stop refusing their actions. Tying this to the slow's removal would leave exactly
             // those players unable to act until something else happened to correct them.
             HomeRecallNetwork.sendCastSync((EntityPlayerMP) player, false, 0);
+        }
+    }
+
+    /**
+     * Ends this player's cast, if they have one, for a stated reason.
+     *
+     * <p>Idempotent. Cancelling a player who is not casting is a no-op, not an error, so every
+     * lifecycle handler can call it without first asking whether it needs to. That is the point:
+     * a handler that has to check is a handler that will one day forget.
+     *
+     * @return true when a cast was actually running and has now ended
+     */
+    public static boolean cancel(EntityPlayerMP player, CancelReason reason) {
+        if (player == null || CASTS.remove(player.getUniqueID()) == null) {
+            return false;
+        }
+        endCancelledCast(player, reason);
+        return true;
+    }
+
+    /**
+     * Everything a cancellation does apart from removing the cast entry itself.
+     *
+     * <p>Separate only because the two callers remove that entry differently: {@link #cancel} from
+     * the map, and the tick loop through its iterator, because removing from a map while iterating
+     * it would fail. Everything after that point is identical and lives here, so a cause added
+     * later cannot be handled properly on one path and forgotten on the other.
+     */
+    private static void endCancelledCast(EntityPlayerMP player, CancelReason reason) {
+        endCastEffects(player, "cancelled: " + reason);
+        Diagnostics.recallCancelled(player.getName(), reason);
+        String message = reason.messageKey();
+        if (message != null) {
+            tell(player, message);
         }
     }
 
@@ -191,11 +221,10 @@ public final class RecallService {
         return RefusalReason.CROSS_DIMENSION_NOT_IMPLEMENTED;
     }
 
-    /** Discards every cast. */
+    /** Discards every cast and everything remembered about who was told what. */
     public static void clear() {
         CASTS.clear();
-        LAST_REFUSAL_AT.clear();
-        LAST_REFUSAL.clear();
+        MESSAGES.clear();
     }
 
     /**
@@ -209,30 +238,57 @@ public final class RecallService {
             return;
         }
 
-        Iterator<Map.Entry<UUID, CastState>> casts = CASTS.entrySet().iterator();
-        while (casts.hasNext()) {
-            Map.Entry<UUID, CastState> entry = casts.next();
-            EntityPlayerMP player = playerFor(entry.getKey());
-            if (player == null || !player.isEntityAlive()) {
-                // The player has gone, died, or been removed from the world under this cast. That
-                // last one is not obvious: leaving the End through the exit portal marks the old
-                // entity dead and builds a new one, so a player who is very much alive arrives
-                // here too. All three end the cast silently for now; giving each a stated cause
-                // and telling the player is a later slice.
-                casts.remove();
-                if (player != null) {
-                    // The entity is about to be replaced by one with a fresh attribute map, so
-                    // this changes nothing that would be observed. It is here because "every path
-                    // that ends a cast removes the slow" is only worth having as a rule if it has
-                    // no exceptions a later reader has to remember.
-                    endCastEffects(player, "cast discarded");
-                }
+        // Walked over a snapshot rather than the live map, because complete() below fires dismount,
+        // wake and chunk-load events, any of which a listening mod could follow back into cancel()
+        // for another player. A live iterator would then throw out of this loop, past the per-cast
+        // catch, and take the server tick with it. One list allocation, only on ticks where
+        // somebody is casting.
+        //
+        // Every removal goes through CASTS by key. A snapshot iterator's own remove() would take
+        // the entry out of the copy and leave the real map untouched, which is not a subtle
+        // failure: the cast would never end, the player would be refused every action for the rest
+        // of the session, and this loop would run forever.
+        for (Map.Entry<UUID, CastState> entry
+                : new ArrayList<Map.Entry<UUID, CastState>>(CASTS.entrySet())) {
+            UUID id = entry.getKey();
+
+            // The snapshot can be stale: a re-entrant cancel during an earlier player's completion
+            // may already have ended this one. Ticking it anyway would teleport a player who has
+            // been told their recall was interrupted.
+            if (CASTS.get(id) != entry.getValue()) {
+                continue;
+            }
+
+            EntityPlayerMP player = playerFor(id);
+            if (player == null) {
+                // Nobody to end anything for and nobody to tell. Recorded anyway: this is the one
+                // place whose job is to notice a cast disappearing quietly, so it is a poor place
+                // for a quiet exit of its own.
+                CASTS.remove(id);
+                Diagnostics.castDiscardedForMissingPlayer(id);
+                continue;
+            }
+            if (player.isDead) {
+                // Removed from the world while alive. Death and logout have their own handlers and
+                // have already taken their casts by now, so what reaches here is the case with no
+                // event of its own: the End exit portal, which discards the player's entity and
+                // builds a new one.
+                CASTS.remove(id);
+                endCancelledCast(player, CancelReason.LEFT_THE_WORLD);
+                continue;
+            }
+            if (player.getHealth() <= 0.0F) {
+                // At zero health but not yet removed. The death handler owns this and has usually
+                // run already; reaching here means something cancelled the death without healing
+                // the player. Ended under the honest cause rather than under the End exit's.
+                CASTS.remove(id);
+                endCancelledCast(player, CancelReason.DIED);
                 continue;
             }
             if (!entry.getValue().tick()) {
                 continue;
             }
-            casts.remove();
+            CASTS.remove(id);
             try {
                 complete(player);
             } catch (Throwable failure) {
@@ -271,18 +327,32 @@ public final class RecallService {
     }
 
     /**
-     * Strips a leftover slow from a player as they join.
+     * Reports what a joining player brought with them, and strips anything they should not have.
      *
-     * <p>This should never find anything. The modifier is unsaved, so it cannot survive a restart,
-     * and every path that ends a cast removes it. That is exactly why it is worth having: if it
-     * ever does find one, the record it writes is the only evidence that an end path was added
-     * without a matching removal, or that the modifier stopped being unsaved.
+     * <p>Three things, and none of them should ever find anything. A leftover slow cannot survive
+     * a restart because the modifier is unsaved. A leftover cast cannot survive a logout because
+     * the logout ends it. The client belief is cleared by the client itself when it loses its
+     * world.
+     *
+     * <p>Which is exactly why all three are checked and the ordinary answer is written down. A
+     * cast correctly discarded at logout and a cast that never existed produce the same
+     * observation on reconnect: the player is not teleported. Only a record saying "nothing was
+     * being held" can tell a working logout from a mod that never started a cast at all.
      */
     @SubscribeEvent
     public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
         if (CastSlowdown.remove(event.player)) {
             Diagnostics.slowdownFoundAtLogin(event.player.getName());
         }
+        // Removed on its own line, not inside the report. This removal is load-bearing, and a
+        // maintainer who reads the line as "just a log" and wraps or deletes it would silently
+        // delete the cleanup with it.
+        //
+        // Deliberately not routed through cancel(). This is a backstop for something that should
+        // not exist, not a cancellation: there is nothing to tell the player, no cause worth a
+        // constant, and the slow and client sync either side of it already cover the same case.
+        boolean staleCast = CASTS.remove(event.player.getUniqueID()) != null;
+        Diagnostics.castStateAtLogin(event.player.getName(), staleCast);
         if (event.player instanceof EntityPlayerMP) {
             // The client belief is static and survives leaving a world, so a player who quit to
             // the menu mid-cast can arrive here still believing they are casting, with no server
@@ -296,14 +366,62 @@ public final class RecallService {
     /**
      * Ends a departing player's cast.
      *
-     * <p>The tick loop would discard the entry on its next pass anyway, once the player can no
-     * longer be found. Ending it here as well is not redundant: it keeps the cast and the slow
-     * ending together, which is the invariant {@link #endCast} exists to hold. Announcing a cause
-     * to a player who has already left is a separate question and is not answered here.
+     * <p>The tick loop would discard the entry on its next pass anyway. Ending it here is what
+     * makes the reason right: from the loop this player is indistinguishable from one whose entity
+     * was removed, and they would be recorded under the wrong cause.
+     *
+     * <p>Everything remembered about what they have been told is dropped too. Those entries are
+     * per player and nothing else would ever remove them.
      */
     @SubscribeEvent
     public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
-        endCast(event.player, "player logged out");
+        if (event.player instanceof EntityPlayerMP) {
+            cancel((EntityPlayerMP) event.player, CancelReason.LOGGED_OUT);
+        }
+        MESSAGES.forget(event.player.getUniqueID());
+    }
+
+    /**
+     * Ends a dying player's cast.
+     *
+     * <p>Before the tick loop can see them, which matters for the recorded cause rather than for
+     * the outcome: the loop would discard the same cast a moment later under a cause meant for
+     * something else.
+     *
+     * <p>No message. The player is looking at a death screen, and an action-bar line under it
+     * would be shown to nobody.
+     *
+     * <p>Lowest priority, and a cancelled event is ignored. This event can be cancelled, and a
+     * mod that cancels it means the player did not die: vanilla returns from onDeath without
+     * doing anything else. Running first would end a cast for a death that was then undone,
+     * leaving a player standing there mid-recall with nothing to show for it and no message,
+     * because this cause deliberately has none. Going last is what lets a totem-like mod have
+     * its say before this does.
+     */
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public static void onPlayerDeath(LivingDeathEvent event) {
+        if (!event.isCanceled() && event.getEntityLiving() instanceof EntityPlayerMP) {
+            cancel((EntityPlayerMP) event.getEntityLiving(), CancelReason.DIED);
+        }
+    }
+
+    /**
+     * Ends the cast of a player who changed dimension by some route this recall did not ask for.
+     *
+     * <p>A portal is the ordinary case. A spectator teleport across dimensions reaches this too,
+     * and is treated the same on purpose: the destination the cast resolved was chosen for where
+     * the player was, and they are no longer there.
+     *
+     * <p>A recall completing its own cross-dimension transfer will fire this event too, once that
+     * is built. It needs no exemption and should not be given one: the tick loop removes the cast
+     * entry before it calls the completion, so an event raised from inside that completion finds
+     * nothing to cancel and this returns false.
+     */
+    @SubscribeEvent
+    public static void onPlayerChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
+        if (event.player instanceof EntityPlayerMP) {
+            cancel((EntityPlayerMP) event.player, CancelReason.CHANGED_DIMENSION);
+        }
     }
 
     /**
@@ -318,7 +436,7 @@ public final class RecallService {
         if (destination == null) {
             Diagnostics.destinationUnresolved(player.getName(), config.fallbackToWorldSpawn());
             Diagnostics.recallRefused(player.getName(), RefusalReason.NO_DESTINATION);
-            tell(player, RefusalReason.NO_DESTINATION);
+            tell(player, RefusalReason.NO_DESTINATION.translationKey());
             return;
         }
         RefusalReason dimensionRefusal = dimensionRefusalFor(
@@ -327,7 +445,7 @@ public final class RecallService {
             // The destination moved to another dimension during the cast. Same decision as at the
             // start, made in the same place, so the two cannot drift apart.
             Diagnostics.recallRefused(player.getName(), dimensionRefusal);
-            tell(player, dimensionRefusal);
+            tell(player, dimensionRefusal.translationKey());
             return;
         }
 
@@ -391,7 +509,7 @@ public final class RecallService {
     /** Records the refusal, tells the player, and returns the reason so callers can pass it on. */
     private static RefusalReason refuse(EntityPlayerMP player, RefusalReason reason) {
         Diagnostics.recallRefused(player.getName(), reason);
-        tell(player, reason);
+        tell(player, reason.translationKey());
         return reason;
     }
 
@@ -402,17 +520,12 @@ public final class RecallService {
      * suppressed by an earlier one, so a player who fixes the first problem and hits the second
      * still hears about it immediately.
      */
-    private static void tell(EntityPlayerMP player, RefusalReason reason) {
-        UUID id = player.getUniqueID();
+    private static void tell(EntityPlayerMP player, String messageKey) {
         long now = player.world.getTotalWorldTime() * 50L;
-        Long lastAt = LAST_REFUSAL_AT.get(id);
-        if (reason == LAST_REFUSAL.get(id) && lastAt != null
-                && now - lastAt.longValue() < REFUSAL_QUIET_MILLIS) {
+        if (!MESSAGES.allow(player.getUniqueID(), messageKey, now)) {
             return;
         }
-        LAST_REFUSAL.put(id, reason);
-        LAST_REFUSAL_AT.put(id, Long.valueOf(now));
-        player.sendStatusMessage(new TextComponentTranslation(reason.translationKey()), true);
+        player.sendStatusMessage(new TextComponentTranslation(messageKey), true);
     }
 
     private static EntityPlayerMP playerFor(UUID id) {

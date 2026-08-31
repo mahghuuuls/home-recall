@@ -1,10 +1,5 @@
 package com.mahghuuuls.homerecall.recall;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.InputStreamReader;
-import java.util.HashSet;
 import java.util.Set;
 
 import org.junit.jupiter.api.DisplayName;
@@ -50,27 +45,11 @@ class DimensionRefusalTest {
 
     @Test
     @DisplayName("every reason's message key actually exists in the language file")
-    void everyReasonHasRealText() throws Exception {
+    void everyReasonHasRealText() {
         // Comparing a key against itself would pass with the key absent from en_us.lang, and the
         // player would then be shown the raw key. Reading the file is what makes this a check
         // rather than a restatement.
-        Set<String> defined = new HashSet<String>();
-        File lang = new File("src/main/resources/assets/homerecall/lang/en_us.lang");
-        assertTrue(lang.isFile(), "expected the language file at " + lang.getAbsolutePath());
-
-        BufferedReader reader = new BufferedReader(new InputStreamReader(
-                new FileInputStream(lang), "UTF-8"));
-        try {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                int equals = line.indexOf('=');
-                if (equals > 0 && !line.startsWith("#")) {
-                    defined.add(line.substring(0, equals).trim());
-                }
-            }
-        } finally {
-            reader.close();
-        }
+        Set<String> defined = LangKeys.read();
 
         for (RefusalReason reason : RefusalReason.values()) {
             assertTrue(defined.contains(reason.translationKey()),

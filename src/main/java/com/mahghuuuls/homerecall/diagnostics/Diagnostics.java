@@ -2,6 +2,7 @@ package com.mahghuuuls.homerecall.diagnostics;
 
 import com.mahghuuuls.homerecall.HomeRecallMod;
 import com.mahghuuuls.homerecall.config.ConfigSnapshot;
+import com.mahghuuuls.homerecall.recall.CancelReason;
 import com.mahghuuuls.homerecall.recall.RecallDestination;
 import com.mahghuuuls.homerecall.recall.RefusalReason;
 
@@ -73,6 +74,54 @@ public final class Diagnostics {
     public static void castsDiscardedAtServerStop(int count) {
         if (enabled()) {
             HomeRecallMod.LOGGER.info("discarding {} recall(s) still running at server stop", count);
+        }
+    }
+
+    /**
+     * A running cast was ended before it could complete, and by what.
+     *
+     * <p>The counterpart to a refusal record. A cancelled cast and a cast that never started look
+     * identical from outside: no teleport, and a player standing where they were.
+     */
+    public static void recallCancelled(String playerName, CancelReason reason) {
+        if (enabled()) {
+            HomeRecallMod.LOGGER.info("{}: recall cancelled ({})", playerName, reason);
+        }
+    }
+
+    /**
+     * A player joined, and whether the server was holding a cast for them.
+     *
+     * <p>Written on every login, including the ordinary case of nothing to report, and that is the
+     * whole point of it. "No cast survived the logout" and "no cast ever existed" produce exactly
+     * the same observation from the player: they reconnect and are not teleported. A record that
+     * only appeared on failure could not tell those apart, so the passing case has to say so out
+     * loud.
+     */
+    public static void castStateAtLogin(String playerName, boolean castFound) {
+        if (enabled()) {
+            if (castFound) {
+                HomeRecallMod.LOGGER.warn(
+                        "{} logged in with a recall still held for them, which should not be "
+                                + "possible: a logout ends every cast. It has been discarded.",
+                        playerName);
+            } else {
+                HomeRecallMod.LOGGER.info("{}: logged in, no recall was being held", playerName);
+            }
+        }
+    }
+
+    /**
+     * A cast was discarded because the player it belonged to could no longer be found at all.
+     *
+     * <p>Not expected: logout removes the cast while the player is still resolvable. Seeing this
+     * means a player left by some route that did not.
+     */
+    public static void castDiscardedForMissingPlayer(java.util.UUID playerId) {
+        if (enabled()) {
+            HomeRecallMod.LOGGER.warn(
+                    "discarded a recall for {}, who could no longer be found on the server",
+                    playerId);
         }
     }
 
