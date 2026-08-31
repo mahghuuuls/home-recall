@@ -48,8 +48,9 @@ public final class HomeRecallNetwork {
      * <p>Sent to the caster alone. Nearby players are a later slice, and sending to more people
      * than need it now would be a wire format to unpick later rather than extend.
      */
-    public static void sendCastSync(EntityPlayerMP player, boolean casting, int durationTicks) {
-        channel().sendTo(new CastSyncMessage(casting, durationTicks), player);
+    public static void sendCastSync(EntityPlayerMP player, boolean casting, int durationTicks,
+                                    boolean interrupted) {
+        channel().sendTo(new CastSyncMessage(casting, durationTicks, interrupted), player);
     }
 
     private static SimpleNetworkWrapper channel() {

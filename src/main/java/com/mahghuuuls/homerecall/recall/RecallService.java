@@ -122,7 +122,7 @@ public final class RecallService {
 
         // Told last, once everything that makes the cast real has happened. The client uses this
         // only to stop predicting actions the server is about to refuse; it decides nothing.
-        HomeRecallNetwork.sendCastSync(player, true, cast.durationTicks());
+        HomeRecallNetwork.sendCastSync(player, true, cast.durationTicks(), false);
         Diagnostics.recallStarted(player.getName(), cast.durationTicks());
     }
 
@@ -133,7 +133,7 @@ public final class RecallService {
      * <p>Separate from the cast entry itself so the tick loop and {@link #cancel} can each remove
      * that entry at the moment that suits them and share everything after it.
      */
-    private static void endCastEffects(EntityPlayer player, String path) {
+    private static void endCastEffects(EntityPlayer player, String path, boolean interrupted) {
         if (CastSlowdown.remove(player)) {
             Diagnostics.slowdownRemoved(player.getName(), path);
         }
@@ -142,7 +142,7 @@ public final class RecallService {
             // had a modifier but was still casting, and still has a client that must be told to
             // stop refusing their actions. Tying this to the slow's removal would leave exactly
             // those players unable to act until something else happened to correct them.
-            HomeRecallNetwork.sendCastSync((EntityPlayerMP) player, false, 0);
+            HomeRecallNetwork.sendCastSync((EntityPlayerMP) player, false, 0, interrupted);
         }
     }
 
@@ -172,7 +172,11 @@ public final class RecallService {
      * later cannot be handled properly on one path and forgotten on the other.
      */
     private static void endCancelledCast(EntityPlayerMP player, CancelReason reason) {
-        endCastEffects(player, "cancelled: " + reason);
+        // The same rule that decides the message decides the fade. A cause with something to say
+        // leaves the player standing there watching the bar, and REQ-043 wants that bar to freeze
+        // and fade; the silent causes are a death screen or an empty chair, where the bar must
+        // simply be gone.
+        endCastEffects(player, "cancelled: " + reason, reason.messageKey() != null);
         Diagnostics.recallCancelled(player.getName(), reason);
         String message = reason.messageKey();
         if (message != null) {
@@ -303,7 +307,7 @@ public final class RecallService {
                 //
                 // Named for reaching the end rather than for teleporting, because completion can
                 // also end in a refusal. Which of the two happened is recorded by complete().
-                endCastEffects(player, "cast reached its end");
+                endCastEffects(player, "cast reached its end", false);
             }
         }
     }
@@ -359,7 +363,7 @@ public final class RecallService {
             // anywhere that could tell them otherwise. The client clears that itself when it
             // loses its world; this makes the correction arrive from the authority as well, on
             // every join, so the belief cannot depend on that timing being right.
-            HomeRecallNetwork.sendCastSync((EntityPlayerMP) event.player, false, 0);
+            HomeRecallNetwork.sendCastSync((EntityPlayerMP) event.player, false, 0, false);
         }
     }
 

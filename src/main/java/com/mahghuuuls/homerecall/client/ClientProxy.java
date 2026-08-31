@@ -1,6 +1,7 @@
 package com.mahghuuuls.homerecall.client;
 
 import com.mahghuuuls.homerecall.CommonProxy;
+import com.mahghuuuls.homerecall.client.hud.CastBarRenderer;
 import com.mahghuuuls.homerecall.net.CastSyncMessage;
 import net.minecraft.client.Minecraft;
 import net.minecraft.entity.player.EntityPlayer;
@@ -24,6 +25,7 @@ public class ClientProxy extends CommonProxy {
         HomeRecallKeys.register();
         MinecraftForge.EVENT_BUS.register(KeyHandler.class);
         MinecraftForge.EVENT_BUS.register(ClientCastLifecycle.class);
+        MinecraftForge.EVENT_BUS.register(CastBarRenderer.class);
     }
 
     /**
@@ -49,7 +51,11 @@ public class ClientProxy extends CommonProxy {
         Minecraft.getMinecraft().addScheduledTask(new Runnable() {
             @Override
             public void run() {
-                ClientCastState.set(message.casting(), message.durationTicks());
+                if (message.casting()) {
+                    ClientCastState.begin(message.durationTicks());
+                } else {
+                    ClientCastState.end(message.interrupted());
+                }
             }
         });
     }

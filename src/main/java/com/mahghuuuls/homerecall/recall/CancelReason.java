@@ -56,6 +56,12 @@ public enum CancelReason {
      *
      * <p>Null rather than a companion "does this one have a message" call. One accessor is one
      * thing for a caller to get wrong instead of two.
+     *
+     * <p><b>This answer also decides the cast bar.</b> A cause with a message leaves the player
+     * standing there watching the bar, so it freezes and fades; a silent cause is a death screen
+     * or an empty chair, so the bar is simply removed. The two rules are one rule on purpose:
+     * both ask "is the player present to see anything", and a cause that split them would be
+     * describing an impossible player. Adding a cause here sets both behaviors at once.
      */
     public String messageKey() {
         return messageKey;

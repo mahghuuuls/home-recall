@@ -26,14 +26,16 @@ public final class CastSyncMessage implements IMessage {
 
     private boolean casting;
     private int durationTicks;
+    private boolean interrupted;
 
     /** Required by the network layer. */
     public CastSyncMessage() {
     }
 
-    public CastSyncMessage(boolean casting, int durationTicks) {
+    public CastSyncMessage(boolean casting, int durationTicks, boolean interrupted) {
         this.casting = casting;
         this.durationTicks = durationTicks;
+        this.interrupted = interrupted;
     }
 
     /** Whether a cast is now running. False means one has just ended, by any route. */
@@ -46,16 +48,30 @@ public final class CastSyncMessage implements IMessage {
         return durationTicks;
     }
 
+    /**
+     * Whether an ended cast was interrupted rather than reaching its end.
+     *
+     * <p>Meaningful only when {@link #casting()} is false. The bar draws the difference: an
+     * interruption freezes it and fades it out, while a completion, a death, or a logout removes
+     * it at once. Carried on the wire because the client cannot tell those apart on its own; all
+     * it would see is "the cast is over".
+     */
+    public boolean interrupted() {
+        return interrupted;
+    }
+
     @Override
     public void fromBytes(ByteBuf buf) {
         casting = buf.readBoolean();
         durationTicks = buf.readInt();
+        interrupted = buf.readBoolean();
     }
 
     @Override
     public void toBytes(ByteBuf buf) {
         buf.writeBoolean(casting);
         buf.writeInt(durationTicks);
+        buf.writeBoolean(interrupted);
     }
 
     /**
