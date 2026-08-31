@@ -14,21 +14,23 @@ public enum RefusalReason {
     /** The player is dead, or otherwise not in a state that can be moved. */
     NOT_ALIVE("homerecall.refused.not_alive"),
 
-    /** No personal spawn, and the world-spawn fallback is switched off. */
+    /**
+     * Nowhere to go. Two causes share this reason: no personal spawn with the world-spawn
+     * fallback switched off, and — rarer — a destination whose dimension failed to initialize,
+     * so its world does not exist to travel to. The diagnostic trail tells them apart: the
+     * second is preceded by a successful destination-resolved record, the first never is.
+     */
     NO_DESTINATION("homerecall.refused.no_destination"),
 
-    /** The destination is in another dimension and cross-dimension recall is switched off. */
-    CROSS_DIMENSION_DISABLED("homerecall.refused.cross_dimension_disabled"),
-
     /**
-     * The destination is in another dimension, cross-dimension recall is permitted, and the
-     * transfer is not built yet.
+     * The destination is in another dimension and cross-dimension recall is switched off.
      *
-     * <p>Separate from CROSS_DIMENSION_DISABLED on purpose. Telling a player their
-     * configuration is off when they switched it on is a false diagnostic, and telling those two
-     * causes apart is the entire reason this enum exists.
+     * <p>Until IMP-004 a sibling constant covered "permitted but not built yet", kept apart from
+     * this one so a player who switched the option on was never told it was off. The transfer
+     * exists now, so that cause is gone; this comment marks where it was so the distinction is
+     * not reinvented as a bug.
      */
-    CROSS_DIMENSION_NOT_IMPLEMENTED("homerecall.refused.cross_dimension_not_implemented"),
+    CROSS_DIMENSION_DISABLED("homerecall.refused.cross_dimension_disabled"),
 
     /**
      * The player is in the middle of using an item: eating, drinking, drawing a bow, or holding

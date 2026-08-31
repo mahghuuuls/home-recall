@@ -12,10 +12,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Covers which reason a cross-dimension destination is refused with.
  *
- * <p>Both refusals look identical from inside the game: the player presses a key and nothing
- * happens. The only thing separating them is the reason recorded, so a wrong reason is not a
- * cosmetic slip, it is the diagnostic asserting something false. An earlier version returned
- * "switched off" to a player who had switched it on, and nothing caught it.
+ * <p>A refusal and a permitted transfer look identical at the moment of the decision: the same
+ * method answers both. A wrong answer here either strands a player who should have travelled or
+ * tells them their configuration is off when they switched it on — an earlier version did the
+ * second, and nothing caught it.
  */
 class DimensionRefusalTest {
 
@@ -35,12 +35,14 @@ class DimensionRefusalTest {
     }
 
     @Test
-    @DisplayName("cross-dimension with the setting on reports that it is not built yet")
-    void permittedButUnbuiltSaysSo() {
-        // The case the earlier version got wrong, and the one a player is more likely to hit,
-        // because allowCrossDimension defaults to true.
-        assertEquals(RefusalReason.CROSS_DIMENSION_NOT_IMPLEMENTED,
-                RecallService.dimensionRefusalFor(0, -1, true));
+    @DisplayName("cross-dimension with the setting on is permitted, in both directions")
+    void permittedTravels() {
+        // Until IMP-004 this case refused with "not built yet". The transfer exists now, so the
+        // permitted answer is null — and the default configuration allows it, so this is the
+        // branch nearly every real cross-dimension recall takes.
+        assertNull(RecallService.dimensionRefusalFor(0, -1, true));
+        assertNull(RecallService.dimensionRefusalFor(-1, 0, true));
+        assertNull(RecallService.dimensionRefusalFor(0, 1, true));
     }
 
     @Test

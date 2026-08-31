@@ -208,28 +208,22 @@ public final class RecallService {
     }
 
     /**
-     * Whether a destination in this dimension can be reached, and if not, which of the two reasons
-     * applies.
+     * Whether a destination in this dimension can be reached.
      *
-     * <p>Pulled out so the choice can be tested. The two causes look identical to a player and are
-     * easy to collapse into one constant, which is exactly what happened in an earlier version:
-     * a player with cross-dimension recall switched <em>on</em> was told it was switched off. The
-     * whole purpose of naming reasons is to keep causes apart, so this one is worth a test rather
-     * than a careful reading.
+     * <p>Pulled out so the choice can be tested. This once told two causes apart — "switched off"
+     * and "permitted but not built" — after an earlier version conflated them and told a player
+     * with cross-dimension recall switched <em>on</em> that it was off. The transfer is built now
+     * (IMP-004), so the second cause is gone and only the configured refusal remains; the shape
+     * survives because the decision is still made in one place for the start and the completion.
      *
      * @return null when the destination is reachable
      */
     static RefusalReason dimensionRefusalFor(int destinationDimension, int playerDimension,
                                              boolean allowCrossDimension) {
-        if (destinationDimension == playerDimension) {
+        if (destinationDimension == playerDimension || allowCrossDimension) {
             return null;
         }
-        if (!allowCrossDimension) {
-            return RefusalReason.CROSS_DIMENSION_DISABLED;
-        }
-        // Permitted by configuration, but the transfer needs a custom teleporter and a re-entrancy
-        // guard that are not built yet. Saying so is honest; reusing the "disabled" reason is not.
-        return RefusalReason.CROSS_DIMENSION_NOT_IMPLEMENTED;
+        return RefusalReason.CROSS_DIMENSION_DISABLED;
     }
 
     /** Discards every cast and everything remembered about who was told what. */
@@ -467,10 +461,10 @@ public final class RecallService {
      * and is treated the same on purpose: the destination the cast resolved was chosen for where
      * the player was, and they are no longer there.
      *
-     * <p>A recall completing its own cross-dimension transfer will fire this event too, once that
-     * is built. It needs no exemption and should not be given one: the tick loop removes the cast
-     * entry before it calls the completion, so an event raised from inside that completion finds
-     * nothing to cancel and this returns false.
+     * <p>A recall completing its own cross-dimension transfer fires this event too, from the last
+     * line of vanilla's transfer. It needs no exemption and has none: the tick loop removes the
+     * cast entry before it calls the completion, so the event raised from inside that completion
+     * finds nothing to cancel and this returns false. (ARC-004 as amended)
      */
     @SubscribeEvent
     public static void onPlayerChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
@@ -503,6 +497,15 @@ public final class RecallService {
             refuse(player, dimensionRefusal);
             return;
         }
+        if (player.server.getWorld(destination.dimension()) == null) {
+            // Forge can fail to initialize a dimension and returns null rather than throwing.
+            // Without this check the transfer below would write the new dimension id onto the
+            // player and then blow up, leaving them in the old world with player data pointing at
+            // the broken one — which is persisted, and greets them again at their next login. A
+            // destination whose world cannot exist is a destination they do not have.
+            refuse(player, RefusalReason.NO_DESTINATION);
+            return;
+        }
 
         // A player who is riding or asleep is snapped back by the vehicle or the bed on the next
         // tick, so moving them without letting go would leave them where they were while the log
@@ -517,10 +520,33 @@ public final class RecallService {
         }
 
         double y = escapeCollision(player, destination);
-        player.setLocationAndAngles(destination.x(), y, destination.z(),
-                player.rotationYaw, player.rotationPitch);
-        player.connection.setPlayerLocation(destination.x(), y, destination.z(),
-                player.rotationYaw, player.rotationPitch);
+        if (destination.dimension() != player.dimension) {
+            // Through the player's own changeDimension, never PlayerList directly. The player
+            // entry point is the one that resets the client-sync fields — skip it and the client
+            // rebuilds its player on respawn with the experience bar at zero and nothing ever
+            // resending it — and it grants the movement-check immunity window and asks other mods
+            // first via EntityTravelToDimensionEvent. Vanilla fires the dimension-change event as
+            // the transfer's last line, where its cancel finds this cast already out of the map
+            // and does nothing: that ordering is the re-entrancy protection (ARC-004 as amended),
+            // and the teleporter is what keeps a portal from being built at the bed.
+            int from = player.dimension;
+            player.changeDimension(destination.dimension(),
+                    new RecallTeleporter(destination.x(), y, destination.z()));
+            if (player.dimension != destination.dimension()) {
+                // Another mod vetoed the travel event. The recall honestly did not happen, and
+                // this is a cross-mod interference worth a line even with diagnostics off.
+                HomeRecallMod.LOGGER.warn(
+                        "another mod prevented Home Recall from moving {} to dimension {}",
+                        player.getName(), destination.dimension());
+                return;
+            }
+            Diagnostics.recallTransferred(player.getName(), from, destination.dimension());
+        } else {
+            player.setLocationAndAngles(destination.x(), y, destination.z(),
+                    player.rotationYaw, player.rotationPitch);
+            player.connection.setPlayerLocation(destination.x(), y, destination.z(),
+                    player.rotationYaw, player.rotationPitch);
+        }
         Diagnostics.recallCompleted(player.getName(), destination);
     }
 

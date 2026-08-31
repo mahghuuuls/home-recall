@@ -125,6 +125,21 @@ public final class Diagnostics {
         }
     }
 
+    /**
+     * A completing recall carried the player to another dimension.
+     *
+     * <p>Written beside the completion record, not instead of it. The transfer is the part with
+     * its own failure modes — a portal generated, a self-cancellation — and both look like an
+     * ordinary arrival from outside, so the record that says "a transfer happened, from here to
+     * there" is what makes those investigable at all.
+     */
+    public static void recallTransferred(String playerName, int fromDimension, int toDimension) {
+        if (enabled()) {
+            HomeRecallMod.LOGGER.info("{}: recall transferred from dimension {} to dimension {}",
+                    playerName, fromDimension, toDimension);
+        }
+    }
+
     /** A cast finished and the player was moved. */
     public static void recallCompleted(String playerName, RecallDestination destination) {
         if (enabled()) {
