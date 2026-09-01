@@ -186,6 +186,25 @@ public final class Diagnostics {
         }
     }
 
+    /** A new player received their one-time stone, and where it ended up. */
+    public static void stoneGranted(String playerName, String placement) {
+        if (enabled()) {
+            HomeRecallMod.LOGGER.info("{}: new-player stone granted ({})",
+                    playerName, placement);
+        }
+    }
+
+    /**
+     * A login that did not grant, and why. "Already granted" on every later login is the record
+     * that proves once-ever is holding; the option and system reasons separate a disabled grant
+     * from a broken one.
+     */
+    public static void stoneGrantSkipped(String playerName, String reason) {
+        if (enabled()) {
+            HomeRecallMod.LOGGER.info("{}: new-player grant skipped ({})", playerName, reason);
+        }
+    }
+
     /** A cast finished and the player was moved. */
     public static void recallCompleted(String playerName, RecallDestination destination) {
         if (enabled()) {

@@ -32,6 +32,14 @@ public class CommonProxy {
     }
 
     /**
+     * The display name of the recall keybinding, or null where no keybinding exists — which is
+     * every dedicated server. The tooltip treats null as unbound.
+     */
+    public String recallKeyDisplayName() {
+        return null;
+    }
+
+    /**
      * Builds the equipment screen's client half. Null here: a dedicated server never opens a
      * screen, and the GUI handler tolerates null exactly so this can say so plainly.
      */

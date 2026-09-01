@@ -19,6 +19,12 @@ public final class HomeRecallGuiHandler implements IGuiHandler {
     @Override
     public Object getServerGuiElement(int id, EntityPlayer player, World world,
                                       int x, int y, int z) {
+        // The choke point every route must pass. Both current routes (the message, the command)
+        // check registerRecallStone themselves; this repeat is the belt for any future route the
+        // red-flag list warns about, because a null here opens nothing.
+        if (!com.mahghuuuls.homerecall.config.ConfigSnapshot.current().registerRecallStone()) {
+            return null;
+        }
         return id == EQUIPMENT_GUI ? new ContainerRecallEquipment(player) : null;
     }
 

@@ -52,6 +52,10 @@ public final class CommandRecallEquipment extends CommandBase {
 
         String action = args[0];
         if ("open".equals(action)) {
+            if (!com.mahghuuuls.homerecall.config.ConfigSnapshot.current().registerRecallStone()) {
+                throw new CommandException("the stone system is disabled (registerRecallStone=false); "
+                        + "show, set, and clear still work");
+            }
             // The pre-GUI-button way in: opens the target's own screen, used by the validation
             // cards and by anyone on a server without the inventory button.
             target.openGui(com.mahghuuuls.homerecall.HomeRecallMod.INSTANCE,

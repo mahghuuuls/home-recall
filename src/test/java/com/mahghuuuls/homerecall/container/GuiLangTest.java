@@ -37,6 +37,11 @@ class GuiLangTest {
         }
         assertTrue(keys.contains("homerecall.gui.equipment.button"),
                 "the inventory button tooltip would render as its raw key");
+        for (String key : new String[] {"homerecall.tooltip.recall_stone.required",
+                "homerecall.tooltip.recall_stone.innate", "homerecall.tooltip.recall_stone.key",
+                "homerecall.tooltip.recall_stone.unbound"}) {
+            assertTrue(keys.contains(key), key + " would render as its raw key");
+        }
         assertTrue(keys.contains("homerecall.gui.equipment.slot"),
                 "the slot label would render as its raw key");
     }

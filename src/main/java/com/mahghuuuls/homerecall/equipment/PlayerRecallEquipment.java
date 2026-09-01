@@ -42,11 +42,13 @@ public final class PlayerRecallEquipment implements INBTSerializable<NBTTagCompo
     }
 
     /**
-     * Puts this stack in the slot, or empties it. The accept rule is enforced here as well as at
-     * the slot, because a path that bypasses the GUI — the admin command, the grant — must not be
-     * able to store a diamond where only a stone belongs.
+     * Puts this stack in the slot — REPLACING whatever is there — or empties it. The accept rule
+     * is enforced here as well as at the slot, because a path that bypasses the GUI must not be
+     * able to store a diamond where only a stone belongs. Emptiness is deliberately not checked:
+     * a caller that must not overwrite (the grant) checks it first, and one that means to
+     * overwrite (the operator command) should not have to fight this method to do it.
      *
-     * @return true when the slot changed
+     * @return true when the stack was acceptable and stored, or the slot was emptied
      */
     public boolean setStone(ItemStack stack) {
         if (!stack.isEmpty() && !accepts(stack)) {

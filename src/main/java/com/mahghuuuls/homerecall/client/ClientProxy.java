@@ -33,6 +33,20 @@ public class ClientProxy extends CommonProxy {
         com.mahghuuuls.homerecall.client.integration.buttonbar.ButtonBarRegistration.register();
     }
 
+    /**
+     * The live binding's display name, resolved at render time so a rebind shows immediately.
+     * Empty when unbound: {@code KeyBinding.getDisplayName} answers "NONE" for key zero, so the
+     * unbound case is detected on the key code, not the string.
+     */
+    @Override
+    public String recallKeyDisplayName() {
+        net.minecraft.client.settings.KeyBinding binding = HomeRecallKeys.recall();
+        if (binding == null || binding.getKeyCode() == 0) {
+            return null;
+        }
+        return binding.getDisplayName();
+    }
+
     /** The client half of the equipment screen. This override is what makes the GUI openable. */
     @Override
     public Object createEquipmentGui(net.minecraft.entity.player.EntityPlayer player) {

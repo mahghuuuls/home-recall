@@ -35,6 +35,14 @@ public final class OpenEquipmentMessage implements IMessage {
             player.getServerWorld().addScheduledTask(new Runnable() {
                 @Override
                 public void run() {
+                    // The server-side gate, not just a hidden button: a client sending this
+                    // message directly must be refused too when the stone system is off. The
+                    // check lives here because this is the one server entry to the screen a
+                    // player controls. (REQ-024)
+                    if (!com.mahghuuuls.homerecall.config.ConfigSnapshot.current()
+                            .registerRecallStone()) {
+                        return;
+                    }
                     player.openGui(HomeRecallMod.INSTANCE, HomeRecallGuiHandler.EQUIPMENT_GUI,
                             player.world, 0, 0, 0);
                 }
