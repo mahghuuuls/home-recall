@@ -3,6 +3,7 @@ package com.mahghuuuls.homerecall;
 import com.mahghuuuls.homerecall.config.ConfigReloadHandler;
 import com.mahghuuuls.homerecall.config.ConfigSnapshot;
 import com.mahghuuuls.homerecall.guard.CastGuardHandler;
+import com.mahghuuuls.homerecall.item.ModItems;
 import com.mahghuuuls.homerecall.net.HomeRecallNetwork;
 import com.mahghuuuls.homerecall.recall.RecallService;
 import net.minecraftforge.common.MinecraftForge;
@@ -52,6 +53,7 @@ public class HomeRecallMod {
 
         MinecraftForge.EVENT_BUS.register(RecallService.class);
         MinecraftForge.EVENT_BUS.register(CastGuardHandler.class);
+        MinecraftForge.EVENT_BUS.register(ModItems.class);
         HomeRecallNetwork.register();
         proxy.preInit(event);
     }

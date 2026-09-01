@@ -27,6 +27,7 @@ public class ClientProxy extends CommonProxy {
         MinecraftForge.EVENT_BUS.register(ClientCastLifecycle.class);
         MinecraftForge.EVENT_BUS.register(CastBarRenderer.class);
         MinecraftForge.EVENT_BUS.register(CastEffects.class);
+        MinecraftForge.EVENT_BUS.register(ItemModels.class);
     }
 
     /**

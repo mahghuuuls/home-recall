@@ -6,3 +6,5 @@ homerecall.refused.no_destination=You have no spawn to recall to.
 homerecall.refused.cross_dimension_disabled=Your spawn is in another dimension.
 homerecall.cancelled.changed_dimension=Recall interrupted - dimension changed
 homerecall.cancelled.left_the_world=Recall interrupted - left the End
+
+item.homerecall.recall_stone.name=Recall Stone

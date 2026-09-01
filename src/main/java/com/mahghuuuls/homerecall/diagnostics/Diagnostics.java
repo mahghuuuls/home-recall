@@ -158,6 +158,19 @@ public final class Diagnostics {
         }
     }
 
+    /**
+     * How the Recall Stone recipe condition answered at recipe load — once per start.
+     *
+     * <p>The one record that separates "the recipe is off because the pack author turned it off"
+     * from "the recipe is silently broken": both look like a craft that yields nothing.
+     */
+    public static void recallStoneRecipeCondition(boolean conditionEnabled) {
+        if (enabled()) {
+            HomeRecallMod.LOGGER.info("recall stone recipe condition evaluated: {}",
+                    conditionEnabled ? "enabled" : "disabled");
+        }
+    }
+
     /** A cast finished and the player was moved. */
     public static void recallCompleted(String playerName, RecallDestination destination) {
         if (enabled()) {
