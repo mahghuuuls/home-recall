@@ -39,6 +39,10 @@ public final class ClientCastLifecycle {
         if (minecraft.world == null) {
             // Fade included: a bar left mid-fade would draw its first frames over the next world.
             ClientCastState.clear();
+            // The equipment mirror has the same static-outlives-the-server problem, and this is
+            // already the class that owns "the client lost its world"; a second lifecycle class
+            // for one line would be ceremony.
+            ClientEquipmentState.clear();
             return;
         }
         if (minecraft.isGamePaused()) {

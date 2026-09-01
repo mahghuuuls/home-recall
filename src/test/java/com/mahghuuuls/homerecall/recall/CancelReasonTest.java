@@ -51,7 +51,9 @@ class CancelReasonTest {
             }
         }
         for (String key : LangKeys.read()) {
-            if (key.startsWith("homerecall.")) {
+            // Scoped to the two families these enums own. GUI titles, item names, and keybind
+            // labels have owners of their own and are pinned by their own tests.
+            if (key.startsWith("homerecall.refused.") || key.startsWith("homerecall.cancelled.")) {
                 assertTrue(owned.contains(key),
                         key + " is in en_us.lang but no constant claims it any more");
             }

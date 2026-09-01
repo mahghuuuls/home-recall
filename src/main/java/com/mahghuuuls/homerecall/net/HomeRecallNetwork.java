@@ -2,7 +2,10 @@ package com.mahghuuuls.homerecall.net;
 
 import com.mahghuuuls.homerecall.Tags;
 import com.mahghuuuls.homerecall.diagnostics.Diagnostics;
+import com.mahghuuuls.homerecall.equipment.PlayerRecallEquipment;
+import com.mahghuuuls.homerecall.equipment.RecallEquipment;
 import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.item.ItemStack;
 import net.minecraft.world.WorldServer;
 import net.minecraftforge.fml.common.network.NetworkRegistry;
 import net.minecraftforge.fml.common.network.simpleimpl.SimpleNetworkWrapper;
@@ -18,6 +21,8 @@ public final class HomeRecallNetwork {
 
     private static final int ID_RECALL_REQUEST = 0;
     private static final int ID_CAST_SYNC = 1;
+    private static final int ID_EQUIPMENT_SYNC = 2;
+    private static final int ID_OPEN_EQUIPMENT = 3;
 
     private static SimpleNetworkWrapper channel;
 
@@ -37,6 +42,25 @@ public final class HomeRecallNetwork {
                 ID_RECALL_REQUEST, Side.SERVER);
         channel.registerMessage(CastSyncMessage.Handler.class, CastSyncMessage.class,
                 ID_CAST_SYNC, Side.CLIENT);
+        channel.registerMessage(EquipmentSyncMessage.Handler.class, EquipmentSyncMessage.class,
+                ID_EQUIPMENT_SYNC, Side.CLIENT);
+        channel.registerMessage(OpenEquipmentMessage.Handler.class, OpenEquipmentMessage.class,
+                ID_OPEN_EQUIPMENT, Side.SERVER);
+    }
+
+    /** Asks the server to open the equipment screen for this client. */
+    public static void sendOpenEquipment() {
+        channel().sendToServer(new OpenEquipmentMessage());
+    }
+
+    /**
+     * Shows one player their own equipment slot. Owner-only: nobody else draws this slot, so
+     * nobody else receives it.
+     */
+    public static void sendEquipmentSync(EntityPlayerMP player) {
+        PlayerRecallEquipment equipment = RecallEquipment.of(player);
+        ItemStack stone = equipment == null ? ItemStack.EMPTY : equipment.stone();
+        channel().sendTo(new EquipmentSyncMessage(stone), player);
     }
 
     /** Asks the server to start a recall. Client side; the server decides whether it may. */

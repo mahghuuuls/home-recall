@@ -18,7 +18,10 @@ import net.minecraft.item.Item;
 public final class ItemRecallStone extends Item {
 
     public ItemRecallStone() {
-        setRegistryName(Tags.MOD_ID, "recall_stone");
+        // The registry name is deliberately NOT set here: that call walks into Forge's loader,
+        // which exists only in a launched game, and this constructor must also work in a unit
+        // test that only needs a real instance for the slot's accept rule. ModItems names the
+        // item at registration, the one place a registry name is ever needed.
         setTranslationKey(Tags.MOD_ID + ".recall_stone");
         setMaxStackSize(1);
         setCreativeTab(CreativeTabs.MISC);

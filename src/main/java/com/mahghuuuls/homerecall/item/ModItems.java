@@ -1,5 +1,6 @@
 package com.mahghuuuls.homerecall.item;
 
+import com.mahghuuuls.homerecall.Tags;
 import net.minecraft.item.Item;
 import net.minecraftforge.event.RegistryEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
@@ -22,6 +23,8 @@ public final class ModItems {
 
     @SubscribeEvent
     public static void registerItems(RegistryEvent.Register<Item> event) {
-        event.getRegistry().register(RECALL_STONE);
+        // Named here rather than in the constructor, so the item class stays constructible in a
+        // unit test with no Forge loader behind it.
+        event.getRegistry().register(RECALL_STONE.setRegistryName(Tags.MOD_ID, "recall_stone"));
     }
 }

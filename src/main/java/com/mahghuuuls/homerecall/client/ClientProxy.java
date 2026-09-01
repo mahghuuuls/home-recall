@@ -30,11 +30,29 @@ public class ClientProxy extends CommonProxy {
         MinecraftForge.EVENT_BUS.register(ItemModels.class);
     }
 
+    /** The client half of the equipment screen. This override is what makes the GUI openable. */
+    @Override
+    public Object createEquipmentGui(net.minecraft.entity.player.EntityPlayer player) {
+        return new com.mahghuuuls.homerecall.client.gui.GuiRecallEquipment(player);
+    }
+
     /**
-     * Applies a cast transition.
-     *
-     * <p>Hopped onto the client thread. The network handler runs on a netty thread, and touching
-     * client state from there is a race whose symptoms appear somewhere else entirely.
+     * Mirrors the equipment slot the server sent, on the client thread. The network handler runs
+     * on a netty thread, and touching client state from there is a race whose symptoms appear
+     * somewhere else entirely.
+     */
+    @Override
+    public void handleEquipmentSync(final com.mahghuuuls.homerecall.net.EquipmentSyncMessage message) {
+        Minecraft.getMinecraft().addScheduledTask(new Runnable() {
+            @Override
+            public void run() {
+                ClientEquipmentState.set(message.stone());
+            }
+        });
+    }
+
+    /**
+     * Applies a cast transition, on the client thread for the same reason as above.
      */
     @Override
     public void handleCastSync(final CastSyncMessage message) {

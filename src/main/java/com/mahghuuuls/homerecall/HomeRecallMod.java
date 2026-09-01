@@ -1,15 +1,21 @@
 package com.mahghuuuls.homerecall;
 
 import com.mahghuuuls.homerecall.config.ConfigReloadHandler;
+import com.mahghuuuls.homerecall.container.HomeRecallGuiHandler;
 import com.mahghuuuls.homerecall.config.ConfigSnapshot;
+import com.mahghuuuls.homerecall.equipment.CommandRecallEquipment;
+import com.mahghuuuls.homerecall.equipment.EquipmentLifecycle;
+import com.mahghuuuls.homerecall.equipment.RecallEquipment;
 import com.mahghuuuls.homerecall.guard.CastGuardHandler;
 import com.mahghuuuls.homerecall.item.ModItems;
 import com.mahghuuuls.homerecall.net.HomeRecallNetwork;
 import com.mahghuuuls.homerecall.recall.RecallService;
 import net.minecraftforge.common.MinecraftForge;
+import net.minecraftforge.fml.common.network.NetworkRegistry;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.SidedProxy;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
+import net.minecraftforge.fml.common.event.FMLServerStartingEvent;
 import net.minecraftforge.fml.common.event.FMLServerStoppingEvent;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -34,6 +40,10 @@ public class HomeRecallMod {
 
     public static final Logger LOGGER = LogManager.getLogger(Tags.MOD_NAME);
 
+    /** The mod instance Forge needs for openGui and the GUI-handler registration. */
+    @Mod.Instance(Tags.MOD_ID)
+    public static HomeRecallMod INSTANCE;
+
     @SidedProxy(
             clientSide = "com.mahghuuuls.homerecall.client.ClientProxy",
             serverSide = "com.mahghuuuls.homerecall.CommonProxy")
@@ -51,11 +61,20 @@ public class HomeRecallMod {
         }
         MinecraftForge.EVENT_BUS.register(ConfigReloadHandler.class);
 
+        RecallEquipment.register();
         MinecraftForge.EVENT_BUS.register(RecallService.class);
         MinecraftForge.EVENT_BUS.register(CastGuardHandler.class);
         MinecraftForge.EVENT_BUS.register(ModItems.class);
+        MinecraftForge.EVENT_BUS.register(EquipmentLifecycle.class);
         HomeRecallNetwork.register();
+        NetworkRegistry.INSTANCE.registerGuiHandler(this, new HomeRecallGuiHandler());
         proxy.preInit(event);
+    }
+
+    /** Registers the operator command. Server-starting is the only moment Forge accepts one. */
+    @Mod.EventHandler
+    public void serverStarting(FMLServerStartingEvent event) {
+        event.registerServerCommand(new CommandRecallEquipment());
     }
 
     /**
