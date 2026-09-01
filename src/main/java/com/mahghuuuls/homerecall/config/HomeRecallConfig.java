@@ -135,7 +135,11 @@ public final class HomeRecallConfig {
     public static final class Visual {
 
         @Config.Name("enableParticles")
-        @Config.Comment("Show the particle effect while a recall is being cast.")
+        @Config.Comment({
+                "Show the recall particle effects.",
+                "In your own client file this controls the cast circle you see around",
+                "yourself. In a server's file it controls the departure and arrival",
+                "bursts everyone nearby sees, which follow the server, not each viewer."})
         public boolean enableParticles = true;
 
         @Config.Name("enableCastHud")
@@ -146,7 +150,12 @@ public final class HomeRecallConfig {
     public static final class Audio {
 
         @Config.Name("enableRecallSounds")
-        @Config.Comment("Play the casting, departure, and arrival sounds.")
+        @Config.Comment({
+                "Play the recall sounds.",
+                "In your own client file this controls the start chime and channelling",
+                "hum you hear yourself. In a server's file it controls the departure",
+                "and arrival sounds everyone nearby hears, which follow the server.",
+                "The game's own dimension-travel sound is vanilla's and stays either way."})
         public boolean enableRecallSounds = true;
     }
 

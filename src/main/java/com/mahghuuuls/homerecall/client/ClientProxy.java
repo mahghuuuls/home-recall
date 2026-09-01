@@ -1,6 +1,7 @@
 package com.mahghuuuls.homerecall.client;
 
 import com.mahghuuuls.homerecall.CommonProxy;
+import com.mahghuuuls.homerecall.client.fx.CastEffects;
 import com.mahghuuuls.homerecall.client.hud.CastBarRenderer;
 import com.mahghuuuls.homerecall.net.CastSyncMessage;
 import net.minecraft.client.Minecraft;
@@ -25,6 +26,7 @@ public class ClientProxy extends CommonProxy {
         MinecraftForge.EVENT_BUS.register(KeyHandler.class);
         MinecraftForge.EVENT_BUS.register(ClientCastLifecycle.class);
         MinecraftForge.EVENT_BUS.register(CastBarRenderer.class);
+        MinecraftForge.EVENT_BUS.register(CastEffects.class);
     }
 
     /**

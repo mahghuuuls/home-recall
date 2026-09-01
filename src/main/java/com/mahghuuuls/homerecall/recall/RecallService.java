@@ -6,6 +6,9 @@ import com.mahghuuuls.homerecall.diagnostics.Diagnostics;
 import com.mahghuuuls.homerecall.net.HomeRecallNetwork;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.init.SoundEvents;
+import net.minecraft.util.EnumParticleTypes;
+import net.minecraft.util.SoundCategory;
 import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.text.TextComponentTranslation;
@@ -519,8 +522,21 @@ public final class RecallService {
             player.wakeUpPlayer(true, false, false);
         }
 
+        // Departure, at the origin, before anything moves: a compact portal-particle puff and the
+        // enderman pop. Server-spawned one-shots so bystanders at the origin see the leaving too;
+        // nothing here repeats per tick (ARC-009).
+        if (config.enableParticles()) {
+            ((WorldServer) player.world).spawnParticle(EnumParticleTypes.PORTAL,
+                    player.posX, player.posY + 1.0D, player.posZ, 40, 0.4D, 0.7D, 0.4D, 0.05D);
+        }
+        if (config.enableRecallSounds()) {
+            player.world.playSound(null, player.posX, player.posY, player.posZ,
+                    SoundEvents.ENTITY_ENDERMEN_TELEPORT, SoundCategory.PLAYERS, 0.7F, 1.0F);
+        }
+
+        boolean crossedDimensions = destination.dimension() != player.dimension;
         double y = escapeCollision(player, destination);
-        if (destination.dimension() != player.dimension) {
+        if (crossedDimensions) {
             // Through the player's own changeDimension, never PlayerList directly. The player
             // entry point is the one that resets the client-sync fields — skip it and the client
             // rebuilds its player on respawn with the experience bar at zero and nothing ever
@@ -546,6 +562,22 @@ public final class RecallService {
                     player.rotationYaw, player.rotationPitch);
             player.connection.setPlayerLocation(destination.x(), y, destination.z(),
                     player.rotationYaw, player.rotationPitch);
+        }
+
+        // Arrival, at the destination, after placement: a smaller puff and the portal-travel
+        // whoosh — the owner's pick for the sound of every finished recall. On a cross-dimension
+        // arrival vanilla has already played the whoosh to the traveller from inside
+        // changeDimension, so there they are excluded and only bystanders hear this copy; the
+        // same-dimension path includes everyone. Either way the player hears it exactly once.
+        WorldServer destinationWorld = player.server.getWorld(destination.dimension());
+        if (config.enableParticles()) {
+            destinationWorld.spawnParticle(EnumParticleTypes.PORTAL,
+                    destination.x(), y + 1.0D, destination.z(), 20, 0.3D, 0.6D, 0.3D, 0.05D);
+        }
+        if (config.enableRecallSounds()) {
+            destinationWorld.playSound(crossedDimensions ? player : null,
+                    destination.x(), y, destination.z(),
+                    SoundEvents.BLOCK_PORTAL_TRAVEL, SoundCategory.PLAYERS, 0.4F, 1.0F);
         }
         Diagnostics.recallCompleted(player.getName(), destination);
     }
