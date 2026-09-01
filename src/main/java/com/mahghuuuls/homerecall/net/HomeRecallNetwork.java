@@ -1,7 +1,9 @@
 package com.mahghuuuls.homerecall.net;
 
 import com.mahghuuuls.homerecall.Tags;
+import com.mahghuuuls.homerecall.diagnostics.Diagnostics;
 import net.minecraft.entity.player.EntityPlayerMP;
+import net.minecraft.world.WorldServer;
 import net.minecraftforge.fml.common.network.NetworkRegistry;
 import net.minecraftforge.fml.common.network.simpleimpl.SimpleNetworkWrapper;
 import net.minecraftforge.fml.relauncher.Side;
@@ -43,14 +45,53 @@ public final class HomeRecallNetwork {
     }
 
     /**
-     * Tells one player that their cast started or ended.
+     * Tells the caster and everyone tracking them that a cast started or ended.
      *
-     * <p>Sent to the caster alone. Nearby players are a later slice, and sending to more people
-     * than need it now would be a wire format to unpick later rather than extend.
+     * <p>Two records per full cast — a start and one end, whichever kind — and nothing per tick:
+     * receivers extrapolate progress from the duration (ARC-009). The tracking set is vanilla's
+     * own — whoever is close enough to see the caster's entity is close enough to see their
+     * cast, and someone out of tracking range receives nothing. Someone who walks into range
+     * mid-cast is caught up by {@link #sendLateCastStart}.
+     *
+     * <p>The recipient count is read from the tracker <em>before</em> the sends, which is the
+     * same set {@code sendToAllTracking} resolves a line later. On a cross-dimension completion
+     * that set is the destination's: the transfer has already moved the player, so the
+     * completion reaches whoever tracks them there, while the origin's observers see the entity
+     * leave tracking and their effects stop that way. The count describes the actual send.
      */
     public static void sendCastSync(EntityPlayerMP player, boolean casting, int durationTicks,
                                     boolean interrupted) {
-        channel().sendTo(new CastSyncMessage(casting, durationTicks, interrupted), player);
+        int observers = ((WorldServer) player.world).getEntityTracker()
+                .getTrackingPlayers(player).size();
+        CastSyncMessage message =
+                new CastSyncMessage(player.getEntityId(), casting, durationTicks, 0, interrupted);
+        channel().sendTo(message, player);
+        channel().sendToAllTracking(message, player);
+        Diagnostics.castSyncSent(player.getName(),
+                casting ? "start" : (interrupted ? "cancel" : "complete"), 1 + observers);
+    }
+
+    /**
+     * Catches up one observer who walked into tracking range while this cast was already
+     * running. Without this, a player approaching mid-cast would see the caster standing in
+     * silence and then vanishing — the silent escape REQ-042 exists to prevent. Carries the
+     * elapsed ticks so the newcomer's circle shows the cast's real progress.
+     */
+    public static void sendLateCastStart(EntityPlayerMP observer, EntityPlayerMP caster,
+                                         int durationTicks, int elapsedTicks) {
+        channel().sendTo(new CastSyncMessage(caster.getEntityId(), true, durationTicks,
+                elapsedTicks, false), observer);
+        Diagnostics.castSyncSent(caster.getName(), "late-start", 1);
+    }
+
+    /**
+     * Corrects one just-joined player's own belief: no cast is held for them. Sent to that
+     * player alone — there is nothing to tell anyone else — and recorded under its own phase so
+     * a session log's completion count is not polluted by logins.
+     */
+    public static void sendCastResync(EntityPlayerMP player) {
+        channel().sendTo(new CastSyncMessage(player.getEntityId(), false, 0, 0, false), player);
+        Diagnostics.castSyncSent(player.getName(), "resync", 1);
     }
 
     private static SimpleNetworkWrapper channel() {

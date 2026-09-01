@@ -40,10 +40,25 @@ public class ClientProxy extends CommonProxy {
         Minecraft.getMinecraft().addScheduledTask(new Runnable() {
             @Override
             public void run() {
-                if (message.casting()) {
-                    ClientCastState.begin(message.durationTicks());
+                Minecraft minecraft = Minecraft.getMinecraft();
+                if (minecraft.player == null) {
+                    // A sync racing a disconnect: nobody to draw for, nothing to hold it against.
+                    // The window is not reachable in ordinary play, and dropping the message is
+                    // the only honest answer — a belief with no player attached is exactly the
+                    // stale state the world-null clear exists to prevent.
+                    return;
+                }
+                if (message.casterId() == minecraft.player.getEntityId()) {
+                    if (message.casting()) {
+                        ClientCastState.begin(message.durationTicks());
+                    } else {
+                        ClientCastState.end(message.interrupted());
+                    }
+                } else if (message.casting()) {
+                    ClientCastState.beginObserved(message.casterId(), message.durationTicks(),
+                            message.elapsedTicks());
                 } else {
-                    ClientCastState.end(message.interrupted());
+                    ClientCastState.endObserved(message.casterId());
                 }
             }
         });

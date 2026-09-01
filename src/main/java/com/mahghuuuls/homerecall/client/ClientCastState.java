@@ -4,6 +4,13 @@ import com.mahghuuuls.homerecall.client.hud.CastBar;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+
 /**
  * What this client believes about its own cast.
  *
@@ -19,8 +26,11 @@ import net.minecraftforge.fml.relauncher.SideOnly;
  * clocks ticking at the same twenty per second stay close enough for a progress bar, and drift
  * cannot accumulate past one cast because every cast starts the count again.
  *
- * <p>Only the local player's cast for now. Nearby players' casts arrive in a later slice, which is
- * why this is a small holder rather than a field on the player.
+ * <p>Other players' casts live here too, keyed by their entity id, with the same shape: begin,
+ * a locally extrapolated clock, end. They carry no fade bookkeeping — the red fade is the HUD's
+ * private language with its own player, and observers just see the effects stop. An observed
+ * cast whose end message never arrives expires on its own a moment after the duration runs out,
+ * so a dropped packet costs a ghost circle for two seconds, not forever.
  */
 @SideOnly(Side.CLIENT)
 public final class ClientCastState {
@@ -38,6 +48,10 @@ public final class ClientCastState {
 
     private static float interruptedFill;
     private static int ticksSinceInterrupt = FADE_OVER;
+
+    /** Other players' running casts, keyed by entity id. Empty whenever nobody visible casts. */
+    private static final Map<Integer, ObservedCast> OBSERVED =
+            new HashMap<Integer, ObservedCast>();
 
     private ClientCastState() {
     }
@@ -73,12 +87,82 @@ public final class ClientCastState {
         elapsedTicks = 0;
     }
 
-    /** Advances the progress count, or the fade, by one client tick. */
+    /** Advances the progress count, or the fade, by one client tick — observed casts included. */
     public static void tick() {
         if (casting) {
             elapsedTicks++;
         } else if (ticksSinceInterrupt < FADE_OVER) {
             ticksSinceInterrupt++;
+        }
+        if (!OBSERVED.isEmpty()) {
+            Iterator<ObservedCast> observed = OBSERVED.values().iterator();
+            while (observed.hasNext()) {
+                if (observed.next().tickAndExpire()) {
+                    observed.remove();
+                }
+            }
+        }
+    }
+
+    /**
+     * Records that another player's cast started, already this far along. Zero for a start seen
+     * from the beginning; a late start for an observer who just walked into range carries the
+     * real progress, so their circle joins the cast where it actually is. Replaces any earlier
+     * belief about the same caster.
+     */
+    public static void beginObserved(int casterId, int duration, int elapsed) {
+        OBSERVED.put(casterId, new ObservedCast(duration, elapsed));
+    }
+
+    /** Records that another player's cast ended, however it ended. Unknown ids are a no-op. */
+    public static void endObserved(int casterId) {
+        OBSERVED.remove(casterId);
+    }
+
+    /**
+     * A snapshot of the observed casts, safe to iterate while messages mutate the real map.
+     * Values are live entries, so the elapsed count read from one is current.
+     */
+    public static List<Map.Entry<Integer, ObservedCast>> observed() {
+        if (OBSERVED.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return new ArrayList<Map.Entry<Integer, ObservedCast>>(OBSERVED.entrySet());
+    }
+
+    /**
+     * One other player's running cast: a duration from the wire and a locally extrapolated
+     * clock, nothing else.
+     */
+    public static final class ObservedCast {
+
+        /**
+         * How long past its duration an observed cast survives without an end message before it
+         * is dropped anyway. Long enough that an end arriving marginally late still finds its
+         * entry; short enough that a lost packet costs seconds of ghost circle, not a session.
+         */
+        private static final int EXPIRE_SLACK_TICKS = 40;
+
+        private final int durationTicks;
+        private int elapsedTicks;
+
+        ObservedCast(int durationTicks, int elapsedTicks) {
+            this.durationTicks = durationTicks;
+            this.elapsedTicks = elapsedTicks;
+        }
+
+        public int durationTicks() {
+            return durationTicks;
+        }
+
+        public int elapsedTicks() {
+            return elapsedTicks;
+        }
+
+        /** Advances one tick; true when this entry has outlived any believable cast. */
+        boolean tickAndExpire() {
+            elapsedTicks++;
+            return elapsedTicks > durationTicks + EXPIRE_SLACK_TICKS;
         }
     }
 
@@ -119,5 +203,6 @@ public final class ClientCastState {
         durationTicks = 0;
         elapsedTicks = 0;
         ticksSinceInterrupt = FADE_OVER;
+        OBSERVED.clear();
     }
 }

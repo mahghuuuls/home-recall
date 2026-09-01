@@ -140,6 +140,24 @@ public final class Diagnostics {
         }
     }
 
+    /**
+     * A cast sync went on the wire, and to how many receivers.
+     *
+     * <p>Written per send, never per tick. The healthy shape for one full cast is <strong>two
+     * records</strong>: a start and one end — cancel or complete, never both, because the cast
+     * leaves the map before either path runs. Beyond those, a "late-start" catches up one
+     * observer who walked into range mid-cast, and a "resync" accompanies every login; both name
+     * themselves so a session's completion count stays countable. The count is the point: an
+     * observing client rendering effects and a per-tick implementation flooding the wire look
+     * identical in game, and only this record tells a reviewer which one is running.
+     */
+    public static void castSyncSent(String playerName, String phase, int recipients) {
+        if (enabled()) {
+            HomeRecallMod.LOGGER.info("{}: cast sync sent ({}) to {} player(s)",
+                    playerName, phase, recipients);
+        }
+    }
+
     /** A cast finished and the player was moved. */
     public static void recallCompleted(String playerName, RecallDestination destination) {
         if (enabled()) {

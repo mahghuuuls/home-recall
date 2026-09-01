@@ -366,8 +366,33 @@ public final class RecallService {
             // the menu mid-cast can arrive here still believing they are casting, with no server
             // anywhere that could tell them otherwise. The client clears that itself when it
             // loses its world; this makes the correction arrive from the authority as well, on
-            // every join, so the belief cannot depend on that timing being right.
-            HomeRecallNetwork.sendCastSync((EntityPlayerMP) event.player, false, 0, false);
+            // every join, so the belief cannot depend on that timing being right. Sent to the
+            // joiner alone: nobody else holds a belief about them yet.
+            HomeRecallNetwork.sendCastResync((EntityPlayerMP) event.player);
+        }
+    }
+
+    /**
+     * Catches up a player who walks into tracking range of someone already casting.
+     *
+     * <p>The transition sends reach only whoever is tracking the caster at that moment; without
+     * this, an observer approaching mid-cast would see the caster standing in silence and then
+     * vanishing with a burst — the unreadable escape REQ-042 forbids. Fired by vanilla's own
+     * tracker, so "close enough to see the player" and "close enough to see their cast" stay the
+     * same rule.
+     */
+    @SubscribeEvent
+    public static void onStartTracking(
+            net.minecraftforge.event.entity.player.PlayerEvent.StartTracking event) {
+        if (!(event.getTarget() instanceof EntityPlayerMP)
+                || !(event.getEntityPlayer() instanceof EntityPlayerMP)) {
+            return;
+        }
+        EntityPlayerMP caster = (EntityPlayerMP) event.getTarget();
+        CastState cast = CASTS.get(caster.getUniqueID());
+        if (cast != null) {
+            HomeRecallNetwork.sendLateCastStart((EntityPlayerMP) event.getEntityPlayer(),
+                    caster, cast.durationTicks(), cast.elapsedTicks());
         }
     }
 

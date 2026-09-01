@@ -6,6 +6,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.audio.ISound;
 import net.minecraft.client.audio.PositionedSoundRecord;
 import net.minecraft.client.entity.EntityPlayerSP;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.init.SoundEvents;
 import net.minecraft.util.EnumParticleTypes;
 import net.minecraft.util.SoundCategory;
@@ -14,6 +16,13 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
+
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * The local player's own cast, made visible and audible: the thickening ground circle, the start
@@ -55,6 +64,10 @@ public final class CastEffects {
      */
     private static ISound playingHum;
 
+    /** Other casters' hums, keyed by entity id, reaped as their casts vanish. */
+    private static final Map<Integer, HumChannel> OBSERVED_HUMS =
+            new HashMap<Integer, HumChannel>();
+
     private CastEffects() {
     }
 
@@ -66,12 +79,13 @@ public final class CastEffects {
         Minecraft minecraft = Minecraft.getMinecraft();
         if (minecraft.world == null || minecraft.player == null) {
             // Leaving a world mid-cast. The world swap stops every sound anyway, but the rarer
-            // player-null frame does not, so the live chunk is stopped here rather than trusted
+            // player-null frame does not, so every live chunk is stopped here rather than trusted
             // to the teardown.
             if (playingHum != null) {
                 minecraft.getSoundHandler().stopSound(playingHum);
                 playingHum = null;
             }
+            stopAllObservedHums(minecraft);
             wasCasting = false;
             return;
         }
@@ -82,8 +96,11 @@ public final class CastEffects {
         } else if (!casting && wasCasting) {
             endEffects(minecraft);
         }
-        if (casting && !minecraft.isGamePaused()) {
-            tickEffects(minecraft);
+        if (!minecraft.isGamePaused()) {
+            if (casting) {
+                tickEffects(minecraft);
+            }
+            tickObservedEffects(minecraft);
         }
         wasCasting = casting;
     }
@@ -142,5 +159,99 @@ public final class CastEffects {
             minecraft.getSoundHandler().stopSound(playingHum);
             playingHum = null;
         }
+    }
+
+    /**
+     * Renders every other visible player's cast: their circle at their feet, their hum at their
+     * position. Runs whether or not the local player is casting — the two are independent, which
+     * is the requirement — and derives everything from {@link ClientCastState#observed()}: a
+     * caster whose end message removed them, whose entry expired, or whose entity left tracking
+     * simply stops appearing here, and their hum is reaped the same tick.
+     */
+    private static void tickObservedEffects(Minecraft minecraft) {
+        List<Map.Entry<Integer, ClientCastState.ObservedCast>> observed =
+                ClientCastState.observed();
+        if (observed.isEmpty() && OBSERVED_HUMS.isEmpty()) {
+            return;
+        }
+        ConfigSnapshot config = ConfigSnapshot.current();
+        if (!config.enableRecallSounds()) {
+            stopAllObservedHums(minecraft);
+        }
+
+        Set<Integer> alive = new HashSet<Integer>();
+        for (Map.Entry<Integer, ClientCastState.ObservedCast> entry : observed) {
+            Entity caster = minecraft.world.getEntityByID(entry.getKey());
+            if (!(caster instanceof EntityPlayer) || caster == minecraft.player) {
+                // Not visible this tick, or somehow ourselves. The entry expires on its own; the
+                // hum reap below keeps this caster silent meanwhile.
+                continue;
+            }
+            alive.add(entry.getKey());
+            ClientCastState.ObservedCast cast = entry.getValue();
+
+            if (config.enableParticles()) {
+                int count = CastCircle.particlesThisTick(
+                        cast.elapsedTicks(), cast.durationTicks());
+                for (int i = 0; i < count; i++) {
+                    double angle = CastCircle.angle(cast.elapsedTicks(), i, count);
+                    double x = caster.posX + Math.cos(angle) * CastCircle.RADIUS;
+                    double z = caster.posZ + Math.sin(angle) * CastCircle.RADIUS;
+                    minecraft.world.spawnParticle(EnumParticleTypes.PORTAL,
+                            x, caster.posY + 0.1D, z, 0.0D, 0.4D, 0.0D);
+                }
+            }
+
+            if (config.enableRecallSounds()) {
+                HumChannel hum = OBSERVED_HUMS.get(entry.getKey());
+                if (hum == null) {
+                    hum = new HumChannel();
+                    OBSERVED_HUMS.put(entry.getKey(), hum);
+                }
+                if (hum.ticksLeft <= 0) {
+                    if (hum.handle != null) {
+                        minecraft.getSoundHandler().stopSound(hum.handle);
+                    }
+                    hum.handle = new PositionedSoundRecord(SoundEvents.BLOCK_PORTAL_AMBIENT,
+                            SoundCategory.PLAYERS, 0.25F, 0.8F, new BlockPos(caster));
+                    minecraft.getSoundHandler().playSound(hum.handle);
+                    hum.ticksLeft = HUM_RESTART_TICKS;
+                } else {
+                    hum.ticksLeft--;
+                }
+            }
+        }
+
+        if (!OBSERVED_HUMS.isEmpty()) {
+            Iterator<Map.Entry<Integer, HumChannel>> hums =
+                    OBSERVED_HUMS.entrySet().iterator();
+            while (hums.hasNext()) {
+                Map.Entry<Integer, HumChannel> entry = hums.next();
+                if (!alive.contains(entry.getKey())) {
+                    if (entry.getValue().handle != null) {
+                        minecraft.getSoundHandler().stopSound(entry.getValue().handle);
+                    }
+                    hums.remove();
+                }
+            }
+        }
+    }
+
+    private static void stopAllObservedHums(Minecraft minecraft) {
+        if (OBSERVED_HUMS.isEmpty()) {
+            return;
+        }
+        for (HumChannel hum : OBSERVED_HUMS.values()) {
+            if (hum.handle != null) {
+                minecraft.getSoundHandler().stopSound(hum.handle);
+            }
+        }
+        OBSERVED_HUMS.clear();
+    }
+
+    /** One caster's hum: the live chunk and the ticks until it may be restarted. */
+    private static final class HumChannel {
+        private ISound handle;
+        private int ticksLeft;
     }
 }
