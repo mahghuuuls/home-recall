@@ -85,6 +85,29 @@ class PlayerRecallEquipmentTest {
     }
 
     @Test
+    @DisplayName("the death policy's four combinations: the stone falls in exactly one of them")
+    void deathPolicyTruthTable() {
+        // IMP-008's pre-committed table: ignoring the keep-inventory input fails two of these,
+        // ignoring the config fails two others. The stone falls only when BOTH say drop.
+        PlayerRecallEquipment equipment = new PlayerRecallEquipment();
+        equipment.setStone(new ItemStack(recallStone));
+
+        assertTrue(equipment.applyDeathPolicy(true, true).isEmpty(),
+                "inventory kept + keep on: nothing falls");
+        assertTrue(equipment.applyDeathPolicy(true, false).isEmpty(),
+                "inventory kept + keep off: the stone follows the surviving inventory");
+        assertTrue(equipment.applyDeathPolicy(false, true).isEmpty(),
+                "inventory dropping + keep on: the option protects the stone");
+        assertFalse(equipment.stone().isEmpty(),
+                "three no-drop combinations must all leave the slot untouched");
+
+        ItemStack fallen = equipment.applyDeathPolicy(false, false);
+        assertFalse(fallen.isEmpty(), "inventory dropping + keep off: the stone must fall");
+        assertTrue(equipment.stone().isEmpty(), "the slot must not also keep it");
+        assertTrue(equipment.applyDeathPolicy(false, false).isEmpty(), "nothing falls twice");
+    }
+
+    @Test
     @DisplayName("the stored stone is a copy, so the caller's stack cannot mutate the slot")
     void storedStoneIsACopy() {
         PlayerRecallEquipment equipment = new PlayerRecallEquipment();

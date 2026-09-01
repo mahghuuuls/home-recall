@@ -35,6 +35,8 @@ class GuiLangTest {
                 keys.add(line.substring(0, eq));
             }
         }
+        assertTrue(keys.contains("homerecall.gui.equipment.button"),
+                "the inventory button tooltip would render as its raw key");
         assertTrue(keys.contains("homerecall.gui.equipment.slot"),
                 "the slot label would render as its raw key");
     }

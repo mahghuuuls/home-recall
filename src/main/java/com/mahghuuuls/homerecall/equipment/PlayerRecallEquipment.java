@@ -56,6 +56,27 @@ public final class PlayerRecallEquipment implements INBTSerializable<NBTTagCompo
         return true;
     }
 
+    /**
+     * Applies the death policy: the slot keeps its stone when the normal inventory is surviving
+     * this death, or when {@code keepRecallStoneOnDeath} says so; otherwise the slot is emptied
+     * and the stone handed back to join the death drops exactly once.
+     *
+     * <p>The decision lives here, on the class that owns the slot; the lifecycle handler that
+     * calls this only reports the two inputs and places whatever comes back. The
+     * inventory-survives input is genuinely an input, not structural: {@code EntityPlayerMP}'s
+     * own override fires the drops event only when dropping, but the base {@code EntityPlayer}
+     * fires it unconditionally, and a policy that ignored the input would strip the stone from a
+     * player whose whole inventory was being kept. (REQ-030, review round 1)
+     */
+    public ItemStack applyDeathPolicy(boolean inventorySurvives, boolean keepOnDeath) {
+        if (inventorySurvives || keepOnDeath || stone.isEmpty()) {
+            return ItemStack.EMPTY;
+        }
+        ItemStack dropped = stone;
+        stone = ItemStack.EMPTY;
+        return dropped;
+    }
+
     /** Whether this player has already received the one-time new-player grant. */
     public boolean granted() {
         return granted;

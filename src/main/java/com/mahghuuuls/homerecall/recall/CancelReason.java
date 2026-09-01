@@ -46,7 +46,14 @@ public enum CancelReason {
     DAMAGED(true, null),
 
     /** The player pressed the key again. Fade only: it worked, and the bar fading says so. */
-    CANCELLED_BY_PLAYER(true, null);
+    CANCELLED_BY_PLAYER(true, null),
+
+    /**
+     * The Recall Stone left the slot mid-cast with the requirement on. Keeps its message by
+     * Bundle 003's own carve-out: an item vanishing from a slot the player is not looking at is
+     * not self-evident the way their own step or swing is.
+     */
+    STONE_REMOVED(true, "homerecall.cancelled.stone_removed");
 
     private final boolean fades;
     private final String messageKey;

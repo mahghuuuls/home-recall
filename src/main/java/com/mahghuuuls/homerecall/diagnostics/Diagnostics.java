@@ -171,6 +171,21 @@ public final class Diagnostics {
         }
     }
 
+    /**
+     * The death policy's outcome for one death: what it read, and whether a stone joined the
+     * drop list. The attribution channel for the project's highest-risk card — a wrong stone
+     * count in the drops is uninvestigable without knowing what the policy saw and decided.
+     */
+    public static void stoneDeathPolicy(String playerName, boolean inventorySurvives,
+                                        boolean keepOnDeath, boolean stoneDropped) {
+        if (enabled()) {
+            HomeRecallMod.LOGGER.info(
+                    "{}: death policy ran (inventory {}, keepRecallStoneOnDeath {}), stone {}",
+                    playerName, inventorySurvives ? "kept" : "dropping", keepOnDeath,
+                    stoneDropped ? "contributed to drops" : "not contributed");
+        }
+    }
+
     /** A cast finished and the player was moved. */
     public static void recallCompleted(String playerName, RecallDestination destination) {
         if (enabled()) {

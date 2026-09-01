@@ -3,6 +3,8 @@ package com.mahghuuuls.homerecall.recall;
 import com.mahghuuuls.homerecall.HomeRecallMod;
 import com.mahghuuuls.homerecall.config.ConfigSnapshot;
 import com.mahghuuuls.homerecall.diagnostics.Diagnostics;
+import com.mahghuuuls.homerecall.equipment.PlayerRecallEquipment;
+import com.mahghuuuls.homerecall.equipment.RecallEquipment;
 import com.mahghuuuls.homerecall.net.HomeRecallNetwork;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
@@ -95,6 +97,11 @@ public final class RecallService {
         }
 
         ConfigSnapshot config = ConfigSnapshot.current();
+        if (stoneGateBlocks(config.requireRecallStone(), equippedStone(player))) {
+            // Equipment-Gated Mode: no stone, no cast — and nothing else either, no timer, no
+            // sync, no HUD (REQ-004). Innate Mode never reaches this line.
+            return refuse(player, RefusalReason.NO_STONE);
+        }
 
         // Resolved before the cast begins rather than at the end. A player who has nowhere to go
         // should be told immediately, not left standing through six seconds for nothing.
@@ -291,6 +298,16 @@ public final class RecallService {
                 // the player. Ended under the honest cause rather than under the End exit's.
                 CASTS.remove(id);
                 endCancelledCast(player, CancelReason.DIED);
+                continue;
+            }
+            if (stoneGateBlocks(ConfigSnapshot.current().requireRecallStone(),
+                    equippedStone(player))) {
+                // The stone left the slot mid-cast, by any route — the GUI, a command, another
+                // mod. A per-tick read of the already-attached capability is what catches every
+                // route; a container hook would see only its own (ARC-006). Innate Mode skips
+                // this entirely, so a slot change there cancels nothing.
+                CASTS.remove(id);
+                endCancelledCast(player, CancelReason.STONE_REMOVED);
                 continue;
             }
             if (entry.getValue().movedFrom(player.posX, player.posY, player.posZ)) {
@@ -671,6 +688,27 @@ public final class RecallService {
             return;
         }
         player.sendStatusMessage(new TextComponentTranslation(messageKey), true);
+    }
+
+    /** The slot's contents, or empty for a player with no equipment attached at all. */
+    private static net.minecraft.item.ItemStack equippedStone(EntityPlayer player) {
+        PlayerRecallEquipment equipment = RecallEquipment.of(player);
+        return equipment == null ? net.minecraft.item.ItemStack.EMPTY : equipment.stone();
+    }
+
+    /**
+     * The gate's whole truth table in one place, free of the live player: recall is stone-gated
+     * exactly when the requirement is on and the slot holds no genuine stone. Asked through
+     * {@code accepts} rather than "non-empty" because deserialization trusts disk: a hand-edited
+     * or future-version NBT could hold something else there, and that must not unlock recall.
+     *
+     * <p>Pulled out so the four combinations can be tested, the same reason
+     * {@link #dimensionRefusalFor} and {@link #breaksChannel} exist: an inverted flag or an
+     * ignored slot passes every other test and strands every player in Equipment-Gated Mode.
+     */
+    static boolean stoneGateBlocks(boolean requireRecallStone,
+                                   net.minecraft.item.ItemStack slotContents) {
+        return requireRecallStone && !PlayerRecallEquipment.accepts(slotContents);
     }
 
     private static EntityPlayerMP playerFor(UUID id) {

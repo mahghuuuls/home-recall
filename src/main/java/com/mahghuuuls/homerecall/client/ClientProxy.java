@@ -28,6 +28,9 @@ public class ClientProxy extends CommonProxy {
         MinecraftForge.EVENT_BUS.register(CastBarRenderer.class);
         MinecraftForge.EVENT_BUS.register(CastEffects.class);
         MinecraftForge.EVENT_BUS.register(ItemModels.class);
+        // The button-bar registration is buffered by that mod's API, so preInit is early enough;
+        // the try/catch lives inside register(), which is the class that owns the failure.
+        com.mahghuuuls.homerecall.client.integration.buttonbar.ButtonBarRegistration.register();
     }
 
     /** The client half of the equipment screen. This override is what makes the GUI openable. */

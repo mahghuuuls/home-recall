@@ -9,3 +9,6 @@ homerecall.cancelled.left_the_world=Recall interrupted - left the End
 
 item.homerecall.recall_stone.name=Recall Stone
 homerecall.gui.equipment.slot=Recall Stone
+homerecall.refused.no_stone=A Recall Stone must be equipped.
+homerecall.cancelled.stone_removed=Recall interrupted - Recall Stone removed
+homerecall.gui.equipment.button=Home Recall Equipment

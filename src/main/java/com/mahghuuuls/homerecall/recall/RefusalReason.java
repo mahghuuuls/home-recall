@@ -41,7 +41,10 @@ public enum RefusalReason {
      * again. Null key rather than a special case at the call site, so the "does it speak" rule
      * lives here with its reason, the same shape the cancellations use.
      */
-    USING_ITEM(null);
+    USING_ITEM(null),
+
+    /** The stone system is on and no Recall Stone sits in the slot. */
+    NO_STONE("homerecall.refused.no_stone");
 
     private final String translationKey;
 

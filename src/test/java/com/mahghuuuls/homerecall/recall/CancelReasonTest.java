@@ -91,6 +91,7 @@ class CancelReasonTest {
         assertTrue(CancelReason.ACTED.fades());
         assertTrue(CancelReason.DAMAGED.fades());
         assertTrue(CancelReason.CANCELLED_BY_PLAYER.fades());
+        assertTrue(CancelReason.STONE_REMOVED.fades());
     }
 
     @Test
@@ -106,6 +107,9 @@ class CancelReasonTest {
         assertNull(CancelReason.LOGGED_OUT.messageKey());
         assertNotNull(CancelReason.CHANGED_DIMENSION.messageKey());
         assertNotNull(CancelReason.LEFT_THE_WORLD.messageKey());
+        // The stone vanishing from an unwatched slot is Bundle 003's recorded exception: not
+        // the player's own obvious doing, so it speaks.
+        assertNotNull(CancelReason.STONE_REMOVED.messageKey());
     }
 
     @Test

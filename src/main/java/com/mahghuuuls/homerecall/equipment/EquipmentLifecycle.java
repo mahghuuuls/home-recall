@@ -49,6 +49,47 @@ public final class EquipmentLifecycle {
         }
     }
 
+    /**
+     * Contributes the stone to the death drops when the policy says it falls.
+     *
+     * <p>{@code PlayerDropsEvent}, never {@code LivingDeathEvent}: the death event fires before
+     * vanilla enables drop capture, so anything spawned there is a loose entity grave and corpse
+     * mods never see. And {@code HIGHEST}, because this handler adds to the list those mods
+     * consume later — at normal priority the two would race on registration order.
+     * {@code EntityPlayerMP}'s own override fires this event only when the inventory is genuinely
+     * dropping, but the base {@code EntityPlayer} fires it unconditionally, so whether the
+     * inventory is surviving is read here and handed to the policy rather than assumed. If
+     * another mod cancels the event, everything in it is destroyed together — the inventory was
+     * emptied into the same list first, so the stone's fate stays exactly the inventory's.
+     * (Feasibility FQ4; REQ-030)
+     */
+    @SubscribeEvent(priority = net.minecraftforge.fml.common.eventhandler.EventPriority.HIGHEST)
+    public static void onPlayerDrops(net.minecraftforge.event.entity.player.PlayerDropsEvent event) {
+        EntityPlayer player = event.getEntityPlayer();
+        PlayerRecallEquipment equipment = RecallEquipment.of(player);
+        if (equipment == null) {
+            return;
+        }
+        boolean inventorySurvives = player.world.getGameRules().getBoolean("keepInventory")
+                || player.isSpectator();
+        boolean keepOnDeath =
+                com.mahghuuuls.homerecall.config.ConfigSnapshot.current().keepRecallStoneOnDeath();
+        net.minecraft.item.ItemStack falling =
+                equipment.applyDeathPolicy(inventorySurvives, keepOnDeath);
+        if (!falling.isEmpty()) {
+            // Placed the way vanilla places the rest of the corpse: the same drop height and the
+            // same 40-tick pickup delay, so the stone is not lootable ahead of the pile.
+            net.minecraft.entity.item.EntityItem drop = new net.minecraft.entity.item.EntityItem(
+                    player.world, player.posX,
+                    player.posY - 0.30000001192092896D + player.getEyeHeight(),
+                    player.posZ, falling);
+            drop.setPickupDelay(40);
+            event.getDrops().add(drop);
+        }
+        com.mahghuuuls.homerecall.diagnostics.Diagnostics.stoneDeathPolicy(
+                player.getName(), inventorySurvives, keepOnDeath, !falling.isEmpty());
+    }
+
     /** The client's copy is refreshed at every boundary where its world knowledge resets. */
     @SubscribeEvent
     public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
