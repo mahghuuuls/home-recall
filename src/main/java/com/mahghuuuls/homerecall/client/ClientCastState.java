@@ -119,6 +119,11 @@ public final class ClientCastState {
         OBSERVED.remove(casterId);
     }
 
+    /** Whether this client currently believes that entity id has a cast running. */
+    public static boolean observedCasting(int casterId) {
+        return OBSERVED.containsKey(casterId);
+    }
+
     /**
      * A snapshot of the observed casts, safe to iterate while messages mutate the real map.
      * Values are live entries, so the elapsed count read from one is current.

@@ -2,6 +2,7 @@ package com.mahghuuuls.homerecall;
 
 import com.mahghuuuls.homerecall.net.CastSyncMessage;
 import com.mahghuuuls.homerecall.net.EquipmentSyncMessage;
+import net.minecraftforge.fml.common.event.FMLInitializationEvent;
 import net.minecraftforge.fml.common.event.FMLPreInitializationEvent;
 
 /**
@@ -19,6 +20,14 @@ public class CommonProxy {
 
     public void preInit(FMLPreInitializationEvent event) {
         // Deliberately empty. See the class javadoc.
+    }
+
+    /**
+     * The init phase. Empty here; the client uses it for the one piece of setup that needs the
+     * render manager, which does not exist yet at preInit.
+     */
+    public void init(FMLInitializationEvent event) {
+        // Deliberately empty. See the method javadoc.
     }
 
     /**

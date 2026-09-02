@@ -28,9 +28,21 @@ public class ClientProxy extends CommonProxy {
         MinecraftForge.EVENT_BUS.register(CastBarRenderer.class);
         MinecraftForge.EVENT_BUS.register(CastEffects.class);
         MinecraftForge.EVENT_BUS.register(ItemModels.class);
+        MinecraftForge.EVENT_BUS.register(
+                com.mahghuuuls.homerecall.client.render.CastFirstPersonRender.class);
+        MinecraftForge.EVENT_BUS.register(
+                com.mahghuuuls.homerecall.client.render.CastPoseHandler.class);
         // The button-bar registration is buffered by that mod's API, so preInit is early enough;
         // the try/catch lives inside register(), which is the class that owns the failure.
         com.mahghuuuls.homerecall.client.integration.buttonbar.ButtonBarRegistration.register();
+    }
+
+    /** The render manager exists by init, and the layer swap must land before any world renders. */
+    @Override
+    public void init(net.minecraftforge.fml.common.event.FMLInitializationEvent event) {
+        super.init(event);
+        com.mahghuuuls.homerecall.client.render.CastThirdPersonLayer
+                .installOn(Minecraft.getMinecraft().getRenderManager());
     }
 
     /**

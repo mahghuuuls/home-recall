@@ -71,6 +71,12 @@ public class HomeRecallMod {
         proxy.preInit(event);
     }
 
+    /** The init phase exists solely for the proxy: client render setup that preInit is too early for. */
+    @Mod.EventHandler
+    public void init(net.minecraftforge.fml.common.event.FMLInitializationEvent event) {
+        proxy.init(event);
+    }
+
     /** Registers the operator command. Server-starting is the only moment Forge accepts one. */
     @Mod.EventHandler
     public void serverStarting(FMLServerStartingEvent event) {
