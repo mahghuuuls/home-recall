@@ -107,7 +107,8 @@ public final class HomeRecallConfig {
         @Config.Name("registerRecallStoneRecipe")
         @Config.Comment({
                 "Whether the Recall Stone crafting recipe exists.",
-                "false leaves the item craftable only by other means a pack provides.",
+                "false leaves the item obtainable only by other means a pack provides.",
+                "The recipe is also disabled while registerRecallStone is false.",
                 "Takes effect on next game start."})
         public boolean registerRecallStoneRecipe = true;
 
@@ -128,7 +129,8 @@ public final class HomeRecallConfig {
         @Config.Comment({
                 "Show the Home Recall button beside the inventory panel.",
                 "false hides it for players who do not want it there. Recall still works,",
-                "but the equipment screen becomes unreachable."})
+                "but the equipment screen is then reachable only through the operator",
+                "command /recallequip open."})
         public boolean showInventoryButton = true;
     }
 
@@ -152,9 +154,9 @@ public final class HomeRecallConfig {
         @Config.Name("enableRecallSounds")
         @Config.Comment({
                 "Play the recall sounds.",
-                "In your own client file this controls the start chime and channelling",
-                "hum you hear yourself. In a server's file it controls the departure",
-                "and arrival sounds everyone nearby hears, which follow the server.",
+                "In your own client file this controls the channelling hum you hear",
+                "yourself. In a server's file it controls the departure and arrival",
+                "sounds everyone nearby hears, which follow the server.",
                 "The game's own dimension-travel sound is vanilla's and stays either way."})
         public boolean enableRecallSounds = true;
     }

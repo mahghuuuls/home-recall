@@ -9,6 +9,7 @@ public final class ConfigTestAccess {
 
     private static boolean savedRegisterStone;
     private static boolean savedRegisterRecipe;
+    private static boolean savedDiagnostics;
 
     private ConfigTestAccess() {
     }
@@ -17,6 +18,7 @@ public final class ConfigTestAccess {
     public static void captureAndReset() {
         savedRegisterStone = HomeRecallConfig.equipment.registerRecallStone;
         savedRegisterRecipe = HomeRecallConfig.equipment.registerRecallStoneRecipe;
+        savedDiagnostics = HomeRecallConfig.diagnostics.enableDiagnostics;
         ConfigSnapshot.resetForTest();
     }
 
@@ -25,6 +27,16 @@ public final class ConfigTestAccess {
                                       boolean registerRecallStoneRecipe) {
         HomeRecallConfig.equipment.registerRecallStone = registerRecallStone;
         HomeRecallConfig.equipment.registerRecallStoneRecipe = registerRecallStoneRecipe;
+        // Reset first, same as the diagnostics door: the two doors must chain in either order
+        // without one of them tripping over a snapshot the other already built.
+        ConfigSnapshot.resetForTest();
+        ConfigSnapshot.initialize();
+    }
+
+    /** Build a snapshot with the diagnostics switch set as given, everything else as it stands. */
+    public static void initializeWithDiagnostics(boolean enableDiagnostics) {
+        HomeRecallConfig.diagnostics.enableDiagnostics = enableDiagnostics;
+        ConfigSnapshot.resetForTest();
         ConfigSnapshot.initialize();
     }
 
@@ -32,6 +44,7 @@ public final class ConfigTestAccess {
     public static void restore() {
         HomeRecallConfig.equipment.registerRecallStone = savedRegisterStone;
         HomeRecallConfig.equipment.registerRecallStoneRecipe = savedRegisterRecipe;
+        HomeRecallConfig.diagnostics.enableDiagnostics = savedDiagnostics;
         ConfigSnapshot.resetForTest();
     }
 }

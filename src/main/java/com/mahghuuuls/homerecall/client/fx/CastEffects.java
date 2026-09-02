@@ -25,8 +25,9 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The local player's own cast, made visible and audible: the thickening ground circle, the start
- * chime, and the channelling hum.
+ * The local player's own cast, made visible and audible: the thickening ground circle and the
+ * channelling hum. (A start chime existed briefly and was cut by the owner in IMP-016; the cast
+ * announces itself by the circle appearing and the hum starting.)
  *
  * <p>A second independent consumer of {@link ClientCastState}, beside the HUD. It reads the same
  * belief every frame and decides nothing: when the belief says the cast ended — however it ended
@@ -38,8 +39,8 @@ import java.util.Set;
  * players must perceive, so the server spawns them where the cast completes; this class only
  * renders the private, ongoing part.
  *
- * <p>Everything is vanilla: portal particles, portal ambience, the end-portal-frame chime. No
- * custom asset ships (REQ-038, REQ-039).
+ * <p>Everything is vanilla: portal particles and portal ambience. No custom asset ships
+ * (REQ-038, REQ-039).
  */
 @SideOnly(Side.CLIENT)
 public final class CastEffects {
