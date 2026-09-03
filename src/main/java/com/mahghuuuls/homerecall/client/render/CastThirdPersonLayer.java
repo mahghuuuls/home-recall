@@ -34,8 +34,22 @@ import java.util.List;
 @SideOnly(Side.CLIENT)
 public final class CastThirdPersonLayer extends LayerHeldItem {
 
+    /**
+     * The layer this one stands in for when it is not vanilla's own: another mod's held-item
+     * layer (a subclass, or a wrapper such as Everfilling Flasks'), kept and delegated to
+     * outside a cast so that mod's rendering survives. Null when the replaced layer was
+     * vanilla's, whose behaviour {@code super} is.
+     */
+    private final LayerRenderer<EntityLivingBase> replaced;
+
     public CastThirdPersonLayer(RenderLivingBase<?> renderer) {
+        this(renderer, null);
+    }
+
+    private CastThirdPersonLayer(RenderLivingBase<?> renderer,
+                                 LayerRenderer<EntityLivingBase> replaced) {
         super(renderer);
+        this.replaced = replaced;
     }
 
     /**
@@ -55,33 +69,115 @@ public final class CastThirdPersonLayer extends LayerHeldItem {
         for (java.util.Map.Entry<String, RenderPlayer> entry
                 : renderManager.getSkinMap().entrySet()) {
             RenderPlayer renderer = entry.getValue();
-            List<LayerRenderer<?>> layers;
             try {
-                layers = ObfuscationReflectionHelper.getPrivateValue(
+                List<LayerRenderer<?>> layers = ObfuscationReflectionHelper.getPrivateValue(
                         RenderLivingBase.class, renderer, "field_177097_h");
-            } catch (RuntimeException failure) {
-                // The same degradation as the no-layer case below, and for the same reason: a
-                // coremod that reshaped the renderer should cost the stone-in-hand, not the game.
-                HomeRecallMod.LOGGER.warn(
-                        "Could not reach the '" + entry.getKey() + "' player renderer's layer "
-                                + "list; casts will show no held stone in third person for "
-                                + "players drawn by it.", failure);
-                continue;
-            }
-            boolean replaced = false;
-            for (int i = 0; i < layers.size(); i++) {
-                if (layers.get(i).getClass() == LayerHeldItem.class) {
-                    layers.set(i, new CastThirdPersonLayer(renderer));
-                    replaced = true;
+                if (!takeOver(layers, renderer)) {
+                    HomeRecallMod.LOGGER.warn(
+                            "The '" + entry.getKey() + "' player renderer has no held-item layer "
+                                    + "this mod recognises, so casts will show no held stone in "
+                                    + "third person for players drawn by it. Layers present: "
+                                    + layerNames(layers));
                 }
-            }
-            if (!replaced) {
+            } catch (Throwable failure) {
+                // Throwable, around the whole body: the reflection, the scan over classes 360
+                // other mods contributed, and the swap. A renderer some coremod reshaped should
+                // cost the stone-in-hand, never the game — the same rule the no-layer case
+                // above follows, and the same width Everfilling Flasks' installer uses.
                 HomeRecallMod.LOGGER.warn(
-                        "The '" + entry.getKey() + "' player renderer has no vanilla held-item "
-                                + "layer to replace; another mod may own it now. Casts will show "
-                                + "no held stone in third person for players drawn by it.");
+                        "Could not take over the '" + entry.getKey() + "' player renderer's "
+                                + "held-item layer; casts will show no held stone in third "
+                                + "person for players drawn by it.", failure);
             }
         }
+    }
+
+    /**
+     * The list rewrite alone, separated from the render manager so a test can hand in a list:
+     * vanilla's layer replaced outright, else another mod's held-item layer wrapped. True when
+     * the list now contains this layer.
+     */
+    static boolean takeOver(List<LayerRenderer<?>> layers, RenderPlayer renderer) {
+        return replaceVanillaLayer(layers, renderer) || wrapHeldItemLayer(layers, renderer);
+    }
+
+    /** The layer this one delegates to outside a cast, or null when it stands in for vanilla's. */
+    LayerRenderer<EntityLivingBase> replacedLayer() {
+        return replaced;
+    }
+
+    /** Vanilla's own layer, replaced outright: the exact class, never a subclass. */
+    private static boolean replaceVanillaLayer(List<LayerRenderer<?>> layers,
+                                               RenderPlayer renderer) {
+        boolean replaced = false;
+        for (int i = 0; i < layers.size(); i++) {
+            if (layers.get(i).getClass() == LayerHeldItem.class) {
+                layers.set(i, new CastThirdPersonLayer(renderer));
+                replaced = true;
+            }
+        }
+        return replaced;
+    }
+
+    /**
+     * Another mod's held-item layer, wrapped rather than replaced: that mod's layer keeps drawing
+     * whenever no cast is showing, and yields the main hand to the stone when one is. The first
+     * such layer only — a second would mean two mods already disagree about the hand.
+     *
+     * <p>Found in the target pack: Everfilling Flasks wraps the vanilla layer in its own
+     * {@code DrinkAwareHeldItemLayer} — not a subclass, so {@code instanceof} misses it — to hide
+     * the held item while a player drinks. Wrapping that wrapper keeps the Flask logic running
+     * outside a cast. During one, the delegate is skipped and the stone drawn: the delegate's
+     * only job was hiding the real item, which the stone branch does anyway, and there is no
+     * generic way to ask a foreign layer whether it would have drawn nothing.
+     *
+     * <p>A drink CAN overlap a cast — Flasks drinks on its own key, not through a vanilla item
+     * use, so the channel does not break (the HUD in {@code CastBarRenderer} is laid out for
+     * exactly that overlap). In that window a watcher sees the stone and the Flask together in
+     * one hand, because Flasks' separate drink layer still draws. Accepted, recorded here rather
+     * than denied: the overlap is brief, the two are the owner's own mods, and the alternative
+     * — asking a foreign delegate what it would draw — does not exist. (Review, 2026-09-03.)
+     */
+    @SuppressWarnings("unchecked")
+    private static boolean wrapHeldItemLayer(List<LayerRenderer<?>> layers,
+                                             RenderPlayer renderer) {
+        for (int i = 0; i < layers.size(); i++) {
+            if (looksLikeHeldItemLayer(layers.get(i).getClass())) {
+                layers.set(i, new CastThirdPersonLayer(renderer,
+                        (LayerRenderer<EntityLivingBase>) layers.get(i)));
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Whether a layer class draws the held item, as far as can be told without knowing the mod:
+     * vanilla's class and its subclasses, or any class that names itself a held-item layer —
+     * the convention vanilla set and other mods' wrappers follow. A naming heuristic, and
+     * recorded as one; the class-identity checks run first, and the warning above names every
+     * layer present when this misses too. This mod's own layer is never a match: a re-scan
+     * (none exists today, but a resource-reload rebuild of the renderers is a plausible future)
+     * must skip it rather than wrap it in another of itself.
+     */
+    static boolean looksLikeHeldItemLayer(Class<?> layerClass) {
+        if (layerClass == CastThirdPersonLayer.class) {
+            return false;
+        }
+        return LayerHeldItem.class.isAssignableFrom(layerClass)
+                || layerClass.getSimpleName().contains("HeldItem");
+    }
+
+    /** The class names present, for the warning: the one fact that identifies the owner. */
+    private static String layerNames(List<LayerRenderer<?>> layers) {
+        StringBuilder names = new StringBuilder();
+        for (LayerRenderer<?> layer : layers) {
+            if (names.length() > 0) {
+                names.append(", ");
+            }
+            names.append(layer.getClass().getName());
+        }
+        return names.toString();
     }
 
     @Override
@@ -91,8 +187,13 @@ public final class CastThirdPersonLayer extends LayerHeldItem {
         ItemStack stone = entity instanceof EntityPlayer
                 ? CastHeldItem.stackFor((EntityPlayer) entity) : ItemStack.EMPTY;
         if (stone.isEmpty()) {
-            super.doRenderLayer(entity, limbSwing, limbSwingAmount, partialTicks, ageInTicks,
-                    netHeadYaw, headPitch, scale);
+            if (replaced != null) {
+                replaced.doRenderLayer(entity, limbSwing, limbSwingAmount, partialTicks,
+                        ageInTicks, netHeadYaw, headPitch, scale);
+            } else {
+                super.doRenderLayer(entity, limbSwing, limbSwingAmount, partialTicks,
+                        ageInTicks, netHeadYaw, headPitch, scale);
+            }
             return;
         }
         // Vanilla's body with the main-hand stack replaced: the stone goes to the primary side,

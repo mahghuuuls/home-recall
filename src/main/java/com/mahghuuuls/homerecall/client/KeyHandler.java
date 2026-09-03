@@ -18,6 +18,9 @@ import net.minecraftforge.fml.relauncher.SideOnly;
 @SideOnly(Side.CLIENT)
 public final class KeyHandler {
 
+    /** Whether the key was down at the end of the previous tick — the other half of an edge. */
+    private static boolean wasDown;
+
     private KeyHandler() {
     }
 
@@ -27,17 +30,37 @@ public final class KeyHandler {
             return;
         }
         if (HomeRecallKeys.recall() == null || Minecraft.getMinecraft().player == null) {
+            wasDown = false;
             return;
         }
-        // One request per tick. isPressed pops one queued press, and presses queue on key-down, so
-        // holding the key produces a single press while mashing it can queue several in one tick.
-        // Draining and discarding the rest keeps this side from creating a flood the server would
-        // then have to absorb.
-        if (HomeRecallKeys.recall().isPressed()) {
-            HomeRecallNetwork.sendRecallRequest();
-            while (HomeRecallKeys.recall().isPressed()) {
-                // Drop the remaining presses buffered for this tick.
-            }
+        // Edges, not counts. In a bare game a held key queues one press, but a modpack can leave
+        // keyboard repeat events switched on (any mod's screen can do that), and then a held key
+        // streams presses — each one toggling the cast between cancelled and started. Seen in
+        // the target pack. So the queue is only WITNESSED, never counted: it says whether any
+        // press landed this tick, which is what catches a tap too quick to still be down when
+        // this samples (down and up inside one tick). The raw down state supplies the other
+        // half of the edge, so a hold is one request whatever the repeat state. (Review B2.)
+        boolean tapped = false;
+        while (HomeRecallKeys.recall().isPressed()) {
+            tapped = true;
         }
+        boolean down = HomeRecallKeys.recall().isKeyDown();
+        if (shouldRequest(down, tapped, wasDown)) {
+            HomeRecallNetwork.sendRecallRequest();
+        }
+        // The raw state, not "down or tapped": a tap must leave no edge behind for the next
+        // tick to mistake for a release, or the press after it would be swallowed.
+        wasDown = down;
+        // Known and accepted: closing a screen while physically holding the key re-reads the
+        // key state, so that instant can register as a fresh press and start a cast. Rare, and
+        // the result is a visible, cancellable cast rather than anything destructive. (Review S4.)
+    }
+
+    /**
+     * The whole rule: a request when the key is down now or was pressed since last tick, and
+     * never while it merely stays down from before.
+     */
+    static boolean shouldRequest(boolean downNow, boolean tappedSince, boolean downBefore) {
+        return (downNow || tappedSince) && !downBefore;
     }
 }
